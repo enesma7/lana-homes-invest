@@ -198,7 +198,7 @@
     if (hm) items = [['#/', 'Dashboard'], ['#/holdings', 'Holdings'], ['#/expenses', 'Expenses'], ['#/resources', 'Resources']];
     else {
       items = [['#/', 'Dashboard'], ['#/flips', 'Flips'], ['#/calculator', 'Calculator'], ['#/estimates', isOwner() ? 'All Estimates' : 'My Estimates'], ['#/archive', 'Archive'], ['#/resources', 'Resources']];
-      if (isOwner()) { items.push(['#/expenses', 'Expenses']); items.push(['#/admin', 'Admin']); }
+      if (isOwner()) items.push(['#/expenses', 'Expenses']);
     }
     if (isOwner()) {
       mb.innerHTML = '<div class="toggle' + (hm ? ' h' : '') + '" role="tablist" aria-label="Flips or Holdings"><span class="knob"></span><button role="tab" data-m="flips" aria-selected="' + !hm + '" class="' + (hm ? '' : 'on') + '">Flips</button><button role="tab" data-m="holdings" aria-selected="' + hm + '" class="' + (hm ? 'on' : '') + '">Holdings</button></div>';
@@ -209,7 +209,7 @@
     tabs.hidden = false;
     var nm = S.user.name || S.user.email, ini = nm.split(/[\s@.]+/).filter(Boolean).slice(0, 2).map(function (w) { return w[0].toUpperCase(); }).join('');
     who.innerHTML = '<button class="avatar" id="av" aria-haspopup="menu" aria-expanded="false" aria-label="Account">' + esc(ini) + '</button>' +
-      '<div class="menu" id="acct" role="menu" hidden><div class="mh"><b>' + esc(nm) + '</b><span>' + esc(S.user.email) + '</span><div><span class="pill' + (isOwner() ? ' admin' : '') + '">' + (isOwner() ? 'Owner' : 'Member') + '</span></div></div><button role="menuitem" id="lo">Sign Out</button></div>';
+      '<div class="menu" id="acct" role="menu" hidden><div class="mh"><b>' + esc(nm) + '</b><span>' + esc(S.user.email) + '</span><div><span class="pill' + (isOwner() ? ' admin' : '') + '">' + (isOwner() ? 'Owner' : 'Member') + '</span></div></div>' + (isOwner() ? '<button role="menuitem" id="adm">' + ICONS.Admin + 'Admin</button>' : '') + '<button role="menuitem" id="lo">Sign Out</button></div>';
     var av = document.getElementById('av'), mn = document.getElementById('acct');
     av.onclick = function (e) { e.stopPropagation(); mn.hidden = !mn.hidden; av.setAttribute('aria-expanded', String(!mn.hidden)); };
     if (!renderChrome.bound) {
@@ -220,6 +220,7 @@
       window.addEventListener('hashchange', function () { closeMenu(); });
     }
     requestAnimationFrame(function () { var t = document.querySelector('.top'); if (t) document.documentElement.style.setProperty('--toph', t.offsetHeight + 'px'); });
+    var adm = document.getElementById('adm'); if (adm) adm.onclick = function () { mn.hidden = true; av.setAttribute('aria-expanded', 'false'); setMode('flips'); location.hash = '#/admin'; };
     document.getElementById('lo').onclick = function () { mn.hidden = true; confirmBox('Sign Out', '<p>Also forget this device? You’ll need an emailed code next time.</p>', 'Sign Out And Forget', function () { logout(true); }, 'Just Sign Out', function () { logout(false); }); };
   }
   function markTab(h) { document.querySelectorAll('#tabs a').forEach(function (a) { var on = a.dataset.h === h || (h.indexOf('#/flip/') === 0 && a.dataset.h === '#/flips') || (h.indexOf('#/estimate/') === 0 && a.dataset.h === '#/estimates'); a.classList.toggle('on', on); }); }
