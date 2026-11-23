@@ -552,15 +552,23 @@
   var CALC_FIELDS = [
     ['Property', [['name', 'Estimate Name', 'text'], ['address', 'Property Address', 'text']]],
     ['Purchase', [['purchasePrice', 'Purchase Price ($)'], ['loanAmount', 'Loan Amount ($)'], ['interestRate', 'Interest Rate (%/yr)'], ['pointsPct', 'Points (%)'], ['originationFee', 'Origination / Lender Fees ($)'], ['lender', 'Lender', 'text'], ['fundingDate', 'Loan Funded Date', 'date'], ['payoffDate', 'Payoff / Sale Date', 'date'], ['daysHeld', 'Or Days Held']]],
-    ['Buying Closing Costs', [['buyClosing', 'Escrow / Title / Recording / Misc ($)'], ['insurancePrepaid', 'Prepaid Insurance ($)'], ['taxProration', 'Tax Proration ($)'], ['taxIsCredit', 'Tax Proration Is A Credit', 'bool'], ['hoaAtPurchase', 'HOA At Purchase ($)'], ['purchaseRefund', 'Escrow Refund After Close ($)']]],
+    ['Buying Closing Costs', [['buyEscrowPct', 'Escrow Fee (% Of Price)', '', '', 'pp'], ['buyTitlePct', 'Title / Lender Policy (% Of Price)', '', '', 'pp'], ['buyLoanDocs', 'Loan Docs / Processing ($)'], ['buyRecording', 'Recording ($)'], ['buyCourier', 'Courier ($)'], ['buyNotary', 'Notary ($)'], ['wireFees', 'Wire Fees ($)'], ['buyClosing', 'Other Buying Costs ($)'], ['insurancePrepaid', 'Prepaid Insurance ($)'], ['taxProration', 'Tax Proration ($)'], ['taxIsCredit', 'Tax Proration Is A Credit', 'bool'], ['hoaAtPurchase', 'HOA At Purchase ($)'], ['purchaseRefund', 'Escrow Refund After Close ($)']]],
     ['Rehab', [['rehabBudget', 'Rehab Budget ($)'], ['contingencyPct', 'Contingency (%)']]],
     ['Holding', [['taxRatePct', 'Property Tax Rate (%/yr)'], ['insuranceAnnual', 'Insurance ($/yr)'], ['utilitiesMonthly', 'Utilities ($/mo)'], ['propertyTaxes', 'Property Taxes Override ($)', '', 'Auto'], ['insuranceHold', 'Insurance Override ($)', '', 'Auto'], ['utilities', 'Utilities Override ($)', '', 'Auto'], ['hoaHold', 'HOA During Hold ($)'], ['otherHold', 'Other Holding ($)'], ['interestOutOfPocket', 'Interest Paid Monthly Out Of Pocket', 'bool']]],
-    ['Selling', [['salePrice', 'Sale Price / ARV ($)'], ['listingPct', 'Listing Commission (%)'], ['buyerPct', 'Buyer Commission (%)'], ['sellEscrow', 'Escrow / Title / Transfer Tax ($)'], ['buyerCredits', 'Buyer Credits ($)'], ['homeWarranty', 'Home Warranty ($)'], ['miscSelling', 'Marketing / Misc ($)']]]
+    ['Selling', [['salePrice', 'Sale Price / ARV ($)'], ['listingPct', 'Listing Commission (%)', '', '', 'sp'], ['buyerPct', 'Buyer Commission (%)', '', '', 'sp'], ['sellEscrowPct', 'Escrow Fee (% Of Sale)', '', '', 'sp'], ['sellTitlePct', 'Owner’s Title Policy (% Of Sale)', '', '', 'sp'], ['sellRecording', 'Recording ($)'], ['nhd', 'NHD Report ($)'], ['homeWarranty', 'Home Warranty ($)'], ['sellNotary', 'Notary ($)'], ['countyTTper1k', 'County Transfer Tax ($ Per $1,000)', '', '', 'tt'], ['cityTTper1k', 'City Transfer Tax ($ Per $1,000)', '', '', 'tt'], ['sellWire', 'Wire Fees ($)'], ['sellEscrow', 'Other Selling Closing ($)'], ['buyerCredits', 'Buyer Credits ($)'], ['miscSelling', 'Marketing / Misc ($)']]]
   ];
   // Holding defaults: tax 1.2%/yr of price; insurance $2,382/yr (Argonne's Bamboo policy, 4/10/2026 statement); utilities $150/mo (Argonne SCE ~$136 + water).
   var CALC_DEFAULTS = { interestRate: 8, pointsPct: 0, taxIsCredit: true, contingencyPct: 10, listingPct: 0, buyerPct: 2, taxRatePct: 1.2, insuranceAnnual: 2382, utilitiesMonthly: 150 };
+  // Itemized closing-cost defaults from Enrique's deals. Buying: Argonne buyer final statement (4/10/2026, $845,000):
+  // escrow $2,462.50 (0.29%), lender policy + binder $372 (0.044%), loan docs + processing $500, recording $106, courier $120, Zina's wires $60.
+  // Selling: Argonne Safeguard estimate (11/20/2026, $1,050,000): escrow $360 (0.034%), title $8,550.50 (0.814%), recording $100, NHD $150,
+  // warranty $710, notary $250, buyer commission 2%. County transfer tax $1.10 per $1,000 (LA / San Bernardino).
+  var ITEM_DEFAULTS = { buyEscrowPct: 0.29, buyTitlePct: 0.044, buyLoanDocs: 500, buyRecording: 106, buyCourier: 120, buyNotary: 0, wireFees: 60,
+    sellEscrowPct: 0.034, sellTitlePct: 0.814, sellRecording: 100, nhd: 150, homeWarranty: 710, sellNotary: 250, countyTTper1k: 1.1, cityTTper1k: 0, sellWire: 0 };
   function viewCalculator(est) {
-    var inputs = Object.assign({}, CALC_DEFAULTS, est ? est.inputs : {});
+    var legacy = est && est.inputs && !('buyEscrowPct' in est.inputs), zero = {};
+    if (legacy) Object.keys(ITEM_DEFAULTS).forEach(function (k) { zero[k] = k === 'homeWarranty' ? (est.inputs.homeWarranty || 0) : 0; });
+    var inputs = Object.assign({}, CALC_DEFAULTS, legacy ? zero : ITEM_DEFAULTS, est ? est.inputs : {});
     if (est) { inputs.name = est.name; inputs.address = est.address; }
     var html = '<div class="spread"><div><h1>' + (est ? 'Estimate: ' + esc(est.name || est.address) : 'Flip Calculator') + '</h1><p class="lead">' + (est ? 'Saved ' + new Date(est.createdAt).toLocaleDateString() + ' · Auto-deletes ' + new Date(est.expiresAt).toLocaleDateString() + ' (90 days)' + (est.owner && !est.mine ? ' · Created by ' + esc(est.owner.name || est.owner.email) : '') : 'Estimates you save are kept for 90 days, then deleted automatically.') + '</p></div>' +
       (est ? '<a class="btn" href="#/estimates">← Estimates</a>' : '') + '</div><div class="grid g2" style="align-items:start"><div class="card rule"><form id="cf">';
@@ -568,7 +576,7 @@
       html += '<div class="label" style="margin-top:6px">' + sec[0] + '</div><div class="calcgrid">' + sec[1].map(function (x) {
         var k = x[0], v = inputs[k] == null ? '' : inputs[k];
         if (x[2] === 'bool') return '<label class="check" style="margin-bottom:12px"><input type="checkbox" data-k="' + k + '"' + (v === true || v === 'true' ? ' checked' : '') + '> ' + x[1] + '</label>';
-        return '<div class="field"><label>' + x[1] + '</label><input data-k="' + k + '" type="' + (x[2] === 'date' ? 'date' : 'text') + '"' + (x[2] ? '' : ' inputmode="decimal"') + (x[3] ? ' placeholder="' + esc(x[3]) + '" data-auto="' + k + '"' : '') + ' value="' + esc(v) + '"></div>';
+        return '<div class="field"><label>' + x[1] + (x[4] ? ' <em class="amt" data-amt="' + k + '"></em>' : '') + '</label><input data-k="' + k + '" type="' + (x[2] === 'date' ? 'date' : 'text') + '"' + (x[2] ? '' : ' inputmode="decimal"') + (x[3] ? ' placeholder="' + esc(x[3]) + '" data-auto="' + k + '"' : '') + ' value="' + esc(v) + '"></div>';
       }).join('') + '</div>';
     });
     html += '<div class="field"><label>Tie To A Flip (Optional)</label><select data-k="flipId" id="cflip"><option value="">None</option></select></div></form></div><div><div class="card rule" id="cres"></div><div class="row" style="margin-top:16px">' +
@@ -592,6 +600,11 @@
         ln('Profit', sMoney(r.profit), 'tot') + ln('Cash Invested', money(r.cashInvested)) + ln('Return On Cash', sPct(r.roiCash)) + ln('Return On Total Cost', sPct(r.roiCost)) +
         ln('Annualized Simple / Compound', r.simpleAnnual == null ? '—' : sPct(r.simpleAnnual) + ' / ' + sPct(r.compoundAnnual)) + ln('Max Offer (80% Of ARV − Rehab)', money(r.maxOffer, 0)) + '</div>' +
         (r.over80 ? '<p class="note bad" style="margin-top:12px">Purchase price is over 80% of the sale price.</p>' : '');
+      var bi = r.items.buying, si = r.items.selling, byName = function (list, nm) { return (list.filter(function (x) { return x[0] === nm; })[0] || [0, 0])[1]; };
+      var amap = { buyEscrowPct: byName(bi, 'Escrow Fee'), buyTitlePct: byName(bi, 'Title / Lender Policy'), listingPct: byName(si, 'Listing Commission'), buyerPct: byName(si, 'Buyer Commission'), sellEscrowPct: byName(si, 'Escrow Fee'), sellTitlePct: byName(si, 'Owner’s Title Policy'), countyTTper1k: byName(si, 'County Transfer Tax'), cityTTper1k: byName(si, 'City Transfer Tax') };
+      document.querySelectorAll('#cf [data-amt]').forEach(function (el) { el.textContent = '= ' + money(amap[el.dataset.amt] || 0); });
+      var brk = function (title, list, tot) { var rows = list.filter(function (x) { return x[1]; }); return '<details class="brk" open><summary>' + title + ' <span class="num">' + money(tot) + '</span></summary><div class="lines">' + rows.map(function (x) { return ln(esc(x[0]), money(x[1])); }).join('') + '</div></details>'; };
+      document.getElementById('cres').insertAdjacentHTML('beforeend', brk('Buying Closing Costs (Itemized)', bi, r.buyClosingItemized) + brk('Selling Costs (Itemized)', si, r.sellingCosts));
       var ph = { propertyTaxes: r.taxHold, insuranceHold: r.insuranceHold, utilities: r.utilitiesHold }; document.querySelectorAll('#cf [data-auto]').forEach(function (el) { el.placeholder = 'Auto: ' + money(ph[el.dataset.auto] || 0); });
       animate(); return { i: i, r: r };
     };

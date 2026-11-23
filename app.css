@@ -283,3 +283,10 @@ input.code::placeholder{color:#D9D9DE;letter-spacing:.42em}
 .menu .mh span.pill.admin{color:#fff}.menu .mh span.pill{font-size:11px;color:var(--char)}.menu .mh span.pill.admin{color:#fff}
 .menu button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 @media (max-width:640px){.menu button{min-height:44px;font-size:14px}}
+.field label .amt{font-style:normal;font-weight:600;color:var(--gold2);letter-spacing:0;text-transform:none;margin-left:4px}
+details.brk{margin-top:12px;border:1px solid var(--line);border-radius:12px;padding:10px 14px;background:#FCFCFD}
+details.brk summary{cursor:pointer;font-size:13px;font-weight:700;display:flex;justify-content:space-between;list-style:none}
+details.brk summary::-webkit-details-marker{display:none}
+details.brk summary:after{content:"+";margin-left:8px;color:var(--meta)}
+details.brk[open] summary:after{content:"−"}
+details.brk .lines{margin-top:8px}

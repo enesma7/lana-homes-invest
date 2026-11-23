@@ -22,7 +22,12 @@
     var days = n(i.daysHeld) || daysBetween(i.fundingDate, i.payoffDate);
     var loanFee = loan * points + n(i.originationFee);
     var down = price - loan;
-    var buying = n(i.buyClosing);
+    // Itemized closing costs (Enrique's real deals): % of price for escrow/title, flat for fixed fees, transfer tax per $1,000.
+    var buyItems = [
+      ['Escrow Fee', price * n(i.buyEscrowPct) / 100], ['Title / Lender Policy', price * n(i.buyTitlePct) / 100],
+      ['Loan Docs / Processing', n(i.buyLoanDocs)], ['Recording', n(i.buyRecording)], ['Courier', n(i.buyCourier)],
+      ['Notary', n(i.buyNotary)], ['Wire Fees', n(i.wireFees)], ['Other Buying Costs', n(i.buyClosing)]];
+    var buying = buyItems.reduce(function (t, x) { return t + x[1]; }, 0);
     var insPre = n(i.insurancePrepaid);
     var taxSigned = i.taxIsCredit === false || i.taxIsCredit === 'false' ? n(i.taxProration) : -n(i.taxProration);
     var hoaBuy = n(i.hoaAtPurchase), refund = n(i.purchaseRefund);
@@ -41,7 +46,13 @@
     var holdOther = taxHold + insHold + utilHold + n(i.hoaHold) + n(i.otherHold);
     var holding = interest + holdOther;
     var listing = sale * n(i.listingPct) / 100, buyerComm = sale * n(i.buyerPct) / 100;
-    var selling = listing + buyerComm + n(i.sellEscrow) + n(i.buyerCredits) + n(i.homeWarranty) + n(i.miscSelling);
+    var sellItems = [
+      ['Listing Commission', listing], ['Buyer Commission', buyerComm], ['Escrow Fee', sale * n(i.sellEscrowPct) / 100],
+      ['Owner’s Title Policy', sale * n(i.sellTitlePct) / 100], ['Recording', n(i.sellRecording)], ['NHD Report', n(i.nhd)],
+      ['Home Warranty', n(i.homeWarranty)], ['Notary', n(i.sellNotary)], ['County Transfer Tax', sale / 1000 * n(i.countyTTper1k)],
+      ['City Transfer Tax', sale / 1000 * n(i.cityTTper1k)], ['Wire Fees', n(i.sellWire)], ['Other Selling Closing', n(i.sellEscrow)],
+      ['Buyer Credits', n(i.buyerCredits)], ['Marketing / Misc', n(i.miscSelling)]];
+    var selling = sellItems.reduce(function (t, x) { return t + x[1]; }, 0);
     var buyingCosts = loanFee + buying + insPre + taxSigned + hoaBuy - refund;
     var totalCost = price + buyingCosts + rehabUsed + holding + selling;
     var profit = sale - totalCost;
@@ -52,14 +63,16 @@
     var maxOffer = 0.8 * sale - rehabUsed;
     var over80 = sale > 0 && price > 0.8 * sale;
     var rating = profit >= 50000 && !over80 ? 'green' : (profit >= 25000 && !over80 ? 'gold' : 'red');
-    return {
+    var out = {
       loanAmount: r2(loan), ltv: price ? loan / price : 0, downPayment: r2(down), loanFee: r2(loanFee), daysHeld: days,
       cashToClose: r2(cashToClose), buyingCosts: r2(buyingCosts), rehabUsed: r2(rehabUsed), interest: r2(interest),
       holdingCosts: r2(holding), sellingCosts: r2(selling), totalCost: r2(totalCost), profit: r2(profit),
       cashInvested: r2(cashInvested), roiCash: roiCash, roiCost: roiCost, simpleAnnual: ann.simple, compoundAnnual: ann.compound,
       maxOffer: r2(maxOffer), over80: over80, rating: rating,
-      taxHold: r2(taxHold), insuranceHold: r2(insHold), utilitiesHold: r2(utilHold), monthsHeld: Math.round(yr * 12 * 10) / 10
+      buyClosingItemized: r2(buying), taxHold: r2(taxHold), insuranceHold: r2(insHold), utilitiesHold: r2(utilHold), monthsHeld: Math.round(yr * 12 * 10) / 10
     };
+    Object.defineProperty(out, 'items', { value: { buying: buyItems.map(function (x) { return [x[0], r2(x[1])]; }), selling: sellItems.map(function (x) { return [x[0], r2(x[1])]; }) }, enumerable: false });
+    return out;
   }
 
   /** A saved flip's numbers (stored line items) → totals, ROI, hold, investor distributions. */
