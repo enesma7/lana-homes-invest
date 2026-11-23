@@ -551,14 +551,16 @@
   /* ---------- calculator ---------- */
   var CALC_FIELDS = [
     ['Property', [['name', 'Estimate Name', 'text'], ['address', 'Property Address', 'text']]],
-    ['Purchase', [['purchasePrice', 'Purchase Price ($)'], ['loanAmount', 'Loan Amount ($)'], ['interestRate', 'Interest Rate (%/yr)'], ['pointsPct', 'Points (%)'], ['originationFee', 'Origination / Lender Fees ($)'], ['lender', 'Lender', 'text'], ['fundingDate', 'Loan Funded Date', 'date'], ['payoffDate', 'Payoff / Sale Date', 'date'], ['daysHeld', 'Or Days Held']]],
-    ['Buying Closing Costs', [['buyEscrowPct', 'Escrow Fee (% Of Price)', '', '', 'pp'], ['buyTitlePct', 'Title / Lender Policy (% Of Price)', '', '', 'pp'], ['buyLoanDocs', 'Loan Docs / Processing ($)'], ['buyRecording', 'Recording ($)'], ['buyCourier', 'Courier ($)'], ['buyNotary', 'Notary ($)'], ['wireFees', 'Wire Fees ($)'], ['buyClosing', 'Other Buying Costs ($)'], ['insurancePrepaid', 'Prepaid Insurance ($)'], ['taxProration', 'Tax Proration ($)'], ['taxIsCredit', 'Tax Proration Is A Credit', 'bool'], ['hoaAtPurchase', 'HOA At Purchase ($)'], ['purchaseRefund', 'Escrow Refund After Close ($)']]],
+    ['Financing & Dates', [['loanAmount', 'Loan Amount ($)'], ['interestRate', 'Interest Rate (%/yr)'], ['pointsPct', 'Points (%)'], ['originationFee', 'Origination / Lender Fees ($)'], ['lender', 'Lender', 'text'], ['fundingDate', 'Purchase / Close Date', 'date'], ['holdMonths', 'Hold (Months)'], ['payoffDate', 'Projected Sale Date', 'date', 'Auto'], ['daysHeld', 'Or Days Held']]],
+    ['Buying Closing Costs', [['buyEscrowPct', 'Escrow Fee (% Of Price)', '', '', 'pp'], ['buyTitlePct', 'Title / Lender Policy (% Of Price)', '', '', 'pp'], ['buyLoanDocs', 'Loan Docs / Processing ($)'], ['buyRecording', 'Recording ($)'], ['buyCourier', 'Courier ($)'], ['buyNotary', 'Notary ($)'], ['wireFees', 'Wire Fees ($)'], ['buyClosing', 'Other Buying Costs ($)'], ['insurancePrepaid', 'Prepaid Insurance, 12 Mo ($)', '', 'Auto'], ['taxProration', 'Tax Proration At Purchase ($)', '', 'Auto'], ['taxIsCredit', 'Typed Purchase Proration Is A Credit', 'bool'], ['hoaAtPurchase', 'HOA At Purchase ($)'], ['purchaseRefund', 'Escrow Refund After Close ($)']]],
     ['Rehab', [['rehabBudget', 'Rehab Budget ($)'], ['contingencyPct', 'Contingency (%)']]],
-    ['Holding', [['taxRatePct', 'Property Tax Rate (%/yr)'], ['insuranceAnnual', 'Insurance ($/yr)'], ['utilitiesMonthly', 'Utilities ($/mo)'], ['propertyTaxes', 'Property Taxes Override ($)', '', 'Auto'], ['insuranceHold', 'Insurance Override ($)', '', 'Auto'], ['utilities', 'Utilities Override ($)', '', 'Auto'], ['hoaHold', 'HOA During Hold ($)'], ['otherHold', 'Other Holding ($)'], ['interestOutOfPocket', 'Interest Paid Monthly Out Of Pocket', 'bool']]],
-    ['Selling', [['salePrice', 'Sale Price / ARV ($)'], ['listingPct', 'Listing Commission (%)', '', '', 'sp'], ['buyerPct', 'Buyer Commission (%)', '', '', 'sp'], ['sellEscrowPct', 'Escrow Fee (% Of Sale)', '', '', 'sp'], ['sellTitlePct', 'Owner’s Title Policy (% Of Sale)', '', '', 'sp'], ['sellRecording', 'Recording ($)'], ['nhd', 'NHD Report ($)'], ['homeWarranty', 'Home Warranty ($)'], ['sellNotary', 'Notary ($)'], ['countyTTper1k', 'County Transfer Tax ($ Per $1,000)', '', '', 'tt'], ['cityTTper1k', 'City Transfer Tax ($ Per $1,000)', '', '', 'tt'], ['sellWire', 'Wire Fees ($)'], ['sellEscrow', 'Other Selling Closing ($)'], ['buyerCredits', 'Buyer Credits ($)'], ['miscSelling', 'Marketing / Misc ($)']]]
+    ['Holding Costs', [['taxRatePct', 'Property Tax Rate (%/yr)'], ['insuranceAnnual', 'Insurance ($/yr)'], ['utilitiesMonthly', 'Utilities ($/mo)'], ['propertyTaxes', 'Property Taxes Override ($)', '', 'Auto'], ['insuranceHold', 'Insurance Override ($)', '', 'Auto'], ['utilities', 'Utilities Override ($)', '', 'Auto'], ['hoaHold', 'HOA During Hold ($)'], ['otherHold', 'Other Holding ($)'], ['interestOutOfPocket', 'Interest Paid Monthly Out Of Pocket', 'bool']]],
+    ['Selling Costs', [['listingPct', 'Listing Commission (%)', '', '', 'sp'], ['buyerPct', 'Buyer Commission (%)', '', '', 'sp'], ['sellEscrowPct', 'Escrow Fee (% Of Sale)', '', '', 'sp'], ['sellTitlePct', 'Owner’s Title Policy (% Of Sale)', '', '', 'sp'], ['sellRecording', 'Recording ($)'], ['nhd', 'NHD Report ($)'], ['homeWarranty', 'Home Warranty ($)'], ['sellNotary', 'Notary ($)'], ['countyTTper1k', 'County Transfer Tax ($ Per $1,000)', '', '', 'tt'], ['cityTTper1k', 'City Transfer Tax ($ Per $1,000)', '', '', 'tt'], ['sellWire', 'Wire Fees ($)'], ['sellEscrow', 'Other Selling Closing ($)'], ['buyerCredits', 'Buyer Credits ($)'], ['miscSelling', 'Marketing / Misc ($)'], ['sellTaxProration', 'Tax Proration At Sale ($, Negative = Credit)', '', 'Auto']]]
   ];
+  // The two numbers that drive a deal sit on top of the calculator; everything else is grouped below.
+  var CALC_TOP = [['purchasePrice', 'Purchase Price'], ['salePrice', 'ARV Sales Price']];
   // Holding defaults: tax 1.2%/yr of price; insurance $2,382/yr (Argonne's Bamboo policy, 4/10/2026 statement); utilities $150/mo (Argonne SCE ~$136 + water).
-  var CALC_DEFAULTS = { interestRate: 8, pointsPct: 0, taxIsCredit: true, contingencyPct: 10, listingPct: 0, buyerPct: 2, taxRatePct: 1.2, insuranceAnnual: 2382, utilitiesMonthly: 150 };
+  var CALC_DEFAULTS = { interestRate: 8, pointsPct: 1.5, taxIsCredit: true, autoProrations: true, holdMonths: 6, contingencyPct: 10, listingPct: 0, buyerPct: 2, taxRatePct: 1.2, insuranceAnnual: 2382, utilitiesMonthly: 150 };
   // Itemized closing-cost defaults from Enrique's deals. Buying: Argonne buyer final statement (4/10/2026, $845,000):
   // escrow $2,462.50 (0.29%), lender policy + binder $372 (0.044%), loan docs + processing $500, recording $106, courier $120, Zina's wires $60.
   // Selling: Argonne Safeguard estimate (11/20/2026, $1,050,000): escrow $360 (0.034%), title $8,550.50 (0.814%), recording $100, NHD $150,
@@ -568,10 +570,16 @@
   function viewCalculator(est) {
     var legacy = est && est.inputs && !('buyEscrowPct' in est.inputs), zero = {};
     if (legacy) Object.keys(ITEM_DEFAULTS).forEach(function (k) { zero[k] = k === 'homeWarranty' ? (est.inputs.homeWarranty || 0) : 0; });
+    // Estimates saved before auto prorations keep their old math (no auto prorations, prepaid insurance or hold months).
+    if (est && est.inputs && !('autoProrations' in est.inputs)) { zero.autoProrations = false; zero.holdMonths = ''; }
     var inputs = Object.assign({}, CALC_DEFAULTS, legacy ? zero : ITEM_DEFAULTS, est ? est.inputs : {});
     if (est) { inputs.name = est.name; inputs.address = est.address; }
     var html = '<div class="spread"><div><h1>' + (est ? 'Estimate: ' + esc(est.name || est.address) : 'Flip Calculator') + '</h1><p class="lead">' + (est ? 'Saved ' + new Date(est.createdAt).toLocaleDateString() + ' · Auto-deletes ' + new Date(est.expiresAt).toLocaleDateString() + ' (90 days)' + (est.owner && !est.mine ? ' · Created by ' + esc(est.owner.name || est.owner.email) : '') : 'Estimates you save are kept for 90 days, then deleted automatically.') + '</p></div>' +
-      (est ? '<a class="btn" href="#/estimates">← Estimates</a>' : '') + '</div><div class="grid g2" style="align-items:start"><div class="card rule"><form id="cf">';
+      (est ? '<a class="btn" href="#/estimates">← Estimates</a>' : '') + '</div>' +
+      '<form id="ctop" class="card rule calchero" onsubmit="return false"><div class="ch-in">' + CALC_TOP.map(function (x) {
+        return '<div class="field big"><label>' + x[1] + '</label><div class="dollar"><span>$</span><input data-k="' + x[0] + '" inputmode="decimal" placeholder="0" value="' + esc(inputs[x[0]] == null ? '' : inputs[x[0]]) + '"></div></div>';
+      }).join('') + '</div><div class="ch-kpis" id="ckpi"></div></form>' +
+      '<div class="grid g2" style="align-items:start;margin-top:22px"><div class="card rule"><form id="cf" onsubmit="return false">';
     CALC_FIELDS.forEach(function (sec) {
       html += '<div class="label" style="margin-top:6px">' + sec[0] + '</div><div class="calcgrid">' + sec[1].map(function (x) {
         var k = x[0], v = inputs[k] == null ? '' : inputs[k];
@@ -579,7 +587,7 @@
         return '<div class="field"><label>' + x[1] + (x[4] ? ' <em class="amt" data-amt="' + k + '"></em>' : '') + '</label><input data-k="' + k + '" type="' + (x[2] === 'date' ? 'date' : 'text') + '"' + (x[2] ? '' : ' inputmode="decimal"') + (x[3] ? ' placeholder="' + esc(x[3]) + '" data-auto="' + k + '"' : '') + ' value="' + esc(v) + '"></div>';
       }).join('') + '</div>';
     });
-    html += '<div class="field"><label>Tie To A Flip (Optional)</label><select data-k="flipId" id="cflip"><option value="">None</option></select></div></form></div><div><div class="card rule" id="cres"></div><div class="row" style="margin-top:16px">' +
+    html += '<input type="hidden" data-k="autoProrations" value="' + esc(String(inputs.autoProrations)) + '"><p class="meta" id="taxnote" style="margin-top:4px"></p></form></div><div><div class="card rule" id="cres"></div><div class="row" style="margin-top:16px">' +
       '<button class="btn gold" id="save">' + (est ? 'Save Changes' : 'Save Estimate') + '</button>' +
       (est ? '<button class="btn" id="addi">Add Inventory Needs List</button>' : '') +
       (est && isOwner() && !est.convertedFlipId ? '<button class="btn dark" id="conv">Turn Into Active Flip</button>' : '') +
@@ -588,14 +596,16 @@
       (est && !isOwner() ? '<p class="meta" style="margin-top:10px">Only the owner can turn an estimate into an active flip.</p>' : '') + '</div></div>' +
       (est ? '<div class="label">Inventory Needs List</div><div id="invlist"></div>' : '');
     $app.innerHTML = html;
-    loadFlips().then(function (fl) { var sel = document.getElementById('cflip'); if (!sel) return; sel.innerHTML += fl.map(function (f) { return '<option value="' + esc(f.id) + '"' + (est && est.flipId === f.id ? ' selected' : '') + '>' + esc(f.address) + '</option>'; }).join(''); }).catch(function () {});
-    var read = function () { var o = {}; document.querySelectorAll('#cf [data-k]').forEach(function (el) { o[el.dataset.k] = el.type === 'checkbox' ? el.checked : el.value; }); return o; };
+    var read = function () { var o = {}; document.querySelectorAll('#ctop [data-k], #cf [data-k]').forEach(function (el) { o[el.dataset.k] = el.type === 'checkbox' ? el.checked : el.value; }); return o; };
     var paint = function () {
       var i = read(), r = C.estimate(i), ln = function (k, v, cls) { return '<div class="ln' + (cls ? ' ' + cls : '') + '"><span>' + k + '</span><span class="num">' + v + '</span></div>'; };
       var tone = r.rating === 'green' ? 'good' : r.rating === 'red' ? 'bad' : 'gold';
-      document.getElementById('cres').innerHTML = '<h2>Results</h2><p class="meta">' + (r.daysHeld ? r.daysHeld + ' days held (' + r.monthsHeld + ' mo) · interest, taxes, insurance and utilities prorated by days / 365' : 'Add dates or days held to compute interest, holding costs and annualized return') + '</p>' +
+      var loss = r.profit < 0;
+      document.getElementById('cres').innerHTML = '<div class="pl-hero' + (loss ? ' loss' : '') + '"><div class="k">' + (loss ? 'Estimated Loss' : 'Estimated Profit') + '</div><div class="v num">' + (loss ? '−' : '') + money(Math.abs(r.profit), 0) + '</div>' +
+        '<div class="s">' + (C.n(i.salePrice) ? 'At a ' + money(C.n(i.salePrice), 0) + ' sale · ' + sPctTxt(r.roiCash) + ' on cash' : 'Add the ARV Sales Price') + '</div></div>' +
+        '<h2 style="margin-top:18px">Results</h2><p class="meta">' + (r.daysHeld ? r.daysHeld + ' days held (' + r.monthsHeld + ' mo) · interest, taxes, insurance and utilities prorated by days / 365' : 'Add dates or days held to compute interest, holding costs and annualized return') + '</p>' +
         '<div class="row" style="justify-content:space-around;margin:12px 0">' + donut(r.roiCash || 0, 1, pct(r.roiCash, 0), 'Return On Cash', tone, 120) + donut(r.simpleAnnual || 0, 1, r.simpleAnnual == null ? '—' : pct(r.simpleAnnual, 0), 'Annualized (Simple)', tone, 120) + '</div>' +
-        '<div class="lines">' + ln('Loan / LTV', money(r.loanAmount, 0) + ' · ' + pct(r.ltv)) + ln('Cash To Close', money(r.cashToClose)) + ln('Buying Costs (Net)', money(r.buyingCosts)) + ln('Rehab (With Contingency)', money(r.rehabUsed)) +
+        '<div class="lines">' + ln('Loan / LTV', money(r.loanAmount, 0) + ' · ' + pct(r.ltv)) + ln('Cash To Close', money(r.cashToClose)) + ln('Buying Costs (Net, With Points)', money(r.buyingCosts)) + ln('Rehab (With Contingency)', money(r.rehabUsed)) +
         ln('Loan Interest', money(r.interest)) + ln('Property Taxes' + (i.propertyTaxes === '' ? ' (Auto)' : ''), money(r.taxHold)) + ln('Insurance' + (i.insuranceHold === '' ? ' (Auto)' : ''), money(r.insuranceHold)) + ln('Utilities' + (i.utilities === '' ? ' (Auto)' : ''), money(r.utilitiesHold)) + ln('Holding Costs (Total)', money(r.holdingCosts)) + ln('Selling Costs', money(r.sellingCosts)) + ln('Total Cost', money(r.totalCost), 'tot') +
         ln('Profit', sMoney(r.profit), 'tot') + ln('Cash Invested', money(r.cashInvested)) + ln('Return On Cash', sPct(r.roiCash)) + ln('Return On Total Cost', sPct(r.roiCost)) +
         ln('Annualized Simple / Compound', r.simpleAnnual == null ? '—' : sPct(r.simpleAnnual) + ' / ' + sPct(r.compoundAnnual)) + ln('Max Offer (80% Of ARV − Rehab)', money(r.maxOffer, 0)) + '</div>' +
@@ -604,15 +614,26 @@
       var amap = { buyEscrowPct: byName(bi, 'Escrow Fee'), buyTitlePct: byName(bi, 'Title / Lender Policy'), listingPct: byName(si, 'Listing Commission'), buyerPct: byName(si, 'Buyer Commission'), sellEscrowPct: byName(si, 'Escrow Fee'), sellTitlePct: byName(si, 'Owner’s Title Policy'), countyTTper1k: byName(si, 'County Transfer Tax'), cityTTper1k: byName(si, 'City Transfer Tax') };
       document.querySelectorAll('#cf [data-amt]').forEach(function (el) { el.textContent = '= ' + money(amap[el.dataset.amt] || 0); });
       var brk = function (title, list, tot) { var rows = list.filter(function (x) { return x[1]; }); return '<details class="brk" open><summary>' + title + ' <span class="num">' + money(tot) + '</span></summary><div class="lines">' + rows.map(function (x) { return ln(esc(x[0]), money(x[1])); }).join('') + '</div></details>'; };
-      document.getElementById('cres').insertAdjacentHTML('beforeend', brk('Buying Closing Costs (Itemized)', bi, r.buyClosingItemized) + brk('Selling Costs (Itemized)', si, r.sellingCosts));
-      var ph = { propertyTaxes: r.taxHold, insuranceHold: r.insuranceHold, utilities: r.utilitiesHold }; document.querySelectorAll('#cf [data-auto]').forEach(function (el) { el.placeholder = 'Auto: ' + money(ph[el.dataset.auto] || 0); });
+      document.getElementById('cres').insertAdjacentHTML('beforeend', brk('Buying Costs At Purchase (Itemized)', bi, r.buyClosingAll) + brk('Selling Costs (Itemized)', si, r.sellingCosts));
+      var t = r.items.tax, auto = i.autoProrations === 'true' || i.autoProrations === true;
+      var dn = function (iso) { return iso ? fmtDate(iso) : '—'; };
+      document.getElementById('taxnote').innerHTML = !auto ? '' : t ? 'Taxes: ' + esc(i.taxRatePct) + '% of the purchase price = ' + money(t.annual) + '/yr, California fiscal year Jul 1–Jun 30, installments due Nov 1 and Feb 1, prorated over a 365-day year. ' +
+        'At purchase (' + dn(t.close) + ') ' + (t.buyPaid ? 'the seller has paid this half, so you reimburse ' + t.buyDays + ' days.' : 'the seller has not paid this half, so the seller credits you ' + t.buyDays + ' days.') + ' ' +
+        'At sale (' + dn(t.sale) + ') ' + (t.sellPaid ? 'you have paid this half, so the buyer credits you ' + t.sellDays + ' days.' : 'you have not paid this half, so you credit the buyer ' + t.sellDays + ' days.') + ' ' +
+        (t.count ? 'Holding taxes are the ' + t.count + ' installment' + (t.count === 1 ? '' : 's') + ' (' + money(t.annual / 2) + ' each) due while you own it' : 'No installment comes due while you own it, so holding taxes are $0') + ', so nothing is counted twice. Prepaid insurance covers the first 12 months; holding insurance only counts time past that.'
+        : 'Add a purchase / close date to auto-calculate tax prorations. Until then holding taxes are ' + esc(i.taxRatePct) + '% a year for the days held. Prepaid insurance covers the first 12 months; holding insurance only counts time past that.';
+      var ph = { propertyTaxes: r.taxHold, insuranceHold: r.insuranceHold, utilities: r.utilitiesHold, insurancePrepaid: r.insurancePrepaid, taxProration: r.taxProrationBuy, sellTaxProration: r.taxProrationSell, payoffDate: r.saleDate }; document.querySelectorAll('#cf [data-auto]').forEach(function (el) { var k = el.dataset.auto; if (k === 'payoffDate') { el.title = ph.payoffDate ? 'Auto: ' + fmtDate(ph.payoffDate) : ''; return; } var v = ph[k] || 0; el.placeholder = 'Auto: ' + (k === 'taxProration' || k === 'sellTaxProration' ? money(Math.abs(v)) + (v < 0 ? ' credit to you' : v > 0 ? ' you pay' : '') : money(v)); });
+      var kp = function (k, v, cls) { return '<div class="ck' + (cls ? ' ' + cls : '') + '"><div class="k">' + k + '</div><div class="v num">' + v + '</div></div>'; };
+      var ratio = C.n(i.salePrice) ? C.n(i.purchasePrice) / C.n(i.salePrice) : null;
+      document.getElementById('ckpi').innerHTML = kp('Projected Profit', sMoney(r.profit, 0), r.profit < 0 ? 'bad' : 'good') + kp('Return On Cash', sPct(r.roiCash)) +
+        kp('Purchase / ARV', ratio == null ? '—' : pct(ratio, 1), r.over80 ? 'bad' : '') + kp('Max Offer (80% ARV − Rehab)', money(r.maxOffer, 0));
       animate(); return { i: i, r: r };
     };
-    document.getElementById('cf').addEventListener('input', paint); document.getElementById('cf').addEventListener('change', paint); paint();
+    ['ctop', 'cf'].forEach(function (id) { var fm = document.getElementById(id); fm.addEventListener('input', paint); fm.addEventListener('change', paint); }); paint();
     document.getElementById('save').onclick = function () {
       var b = this, x = paint(), i = x.i; b.disabled = true;
       var inputs2 = Object.assign({}, i); delete inputs2.name; delete inputs2.address; delete inputs2.flipId;
-      api('saveEstimate', { estimate: { id: est ? est.id : '', name: i.name, address: i.address, flipId: i.flipId, inputs: inputs2, results: x.r } })
+      api('saveEstimate', { estimate: { id: est ? est.id : '', name: i.name, address: i.address, flipId: est ? est.flipId || '' : '', inputs: inputs2, results: x.r } })
         .then(function (e) { toast('Estimate saved. It auto-deletes ' + new Date(e.expiresAt).toLocaleDateString() + '.'); location.hash = '#/estimate/' + e.id; if (est) viewEstimate(e.id); }).catch(fail).then(function () { b.disabled = false; });
     };
     if (est) {
@@ -623,6 +644,7 @@
       if (cv) cv.onclick = function () { confirmBox('Turn Into Active Flip', '<p>This creates a new Active flip from this estimate (with its inventory needs list). The person who made the estimate is added as a Member.</p>', 'Create Flip', function () { api('convertEstimate', { id: est.id }).then(function (f) { S.flips = null; toast('Flip created.'); location.hash = '#/flip/' + f.id; }).catch(fail); }); };
     }
   }
+  function sPctTxt(v) { return v == null || !isFinite(v) ? '—' : (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v * 100).toFixed(1) + '%'; }
   function viewEstimate(id) { loading(); api('getEstimate', { id: id }).then(viewCalculator).catch(function (e) { $app.innerHTML = '<p class="empty">' + esc(e.message) + '</p>'; }); }
   function estTable(list) {
     return '<div class="card tblwrap"><table class="t"><thead><tr><th>Estimate</th>' + (isOwner() || list.some(function (e) { return !e.mine; }) ? '<th>Created By</th>' : '') + '<th class="r">Purchase</th><th class="r">Sale / ARV</th><th class="r">Profit</th><th class="r">ROI On Cash</th><th>Expires</th><th></th></tr></thead><tbody>' +
@@ -747,10 +769,13 @@
       if (f.cat && e.category !== f.cat) return false;
       if (f.from && (!e.date || e.date < f.from)) return false;
       if (f.to && (!e.date || e.date > f.to)) return false;
-      if (q && (e.payee + ' ' + e.notes + ' ' + e.method).toLowerCase().indexOf(q) < 0) return false;
+      if (q && (e.payee + ' ' + e.notes + ' ' + e.method + ' ' + payerOf(e)).toLowerCase().indexOf(q) < 0) return false;
       return true;
     }).sort(function (a, b) { return (b.date || '0') < (a.date || '0') ? -1 : 1; });
   }
+  var PB_RE = /^Paid by:\s*([^·]+?)\s*(?:·\s*|$)/;
+  function payerOf(e) { if (e.paidBy) return e.paidBy; var m = PB_RE.exec(e.notes || ''); return m ? m[1] : ''; }
+  function notesOf(e) { return String(e.notes || '').replace(PB_RE, ''); }
   function isGeneralExp(e) { return !e.linkId || !e.linkType || e.linkType === 'general' || e.linkType === 'llc'; }
   function viewExpenses() {
     loading();
@@ -778,12 +803,12 @@
       kpi('Needs Info', String(need), 'Missing a date or amount', need ? 'bad' : '') + '</div>';
     html += '<div class="grid g2" style="margin-top:22px"><div class="card"><h2>By Category</h2><div class="lines">' + Object.keys(byCat).sort(function (a, b) { return byCat[b] - byCat[a]; }).map(function (k) { return '<div class="ln"><span>' + esc(k) + '</span><span class="num">' + money(byCat[k]) + '</span></div>'; }).join('') + '</div></div>' +
       '<div class="card"><h2>Top Categories</h2>' + hbars(Object.keys(byCat).sort(function (a, b) { return byCat[b] - byCat[a]; }).slice(0, 6).map(function (k) { return { label: k, value: byCat[k], display: money(byCat[k], 0) }; })) + '</div></div>';
-    html += '<div class="label">Entries</div><div class="card tblwrap"><table class="t"><thead><tr><th>Date</th><th>Payee</th><th>Category</th><th>Method</th><th class="r">Amount</th><th>Receipt</th><th></th></tr></thead><tbody>' +
+    html += '<div class="label">Entries</div><div class="card tblwrap"><table class="t"><thead><tr><th>Date</th><th>Payee</th><th>Category</th><th>Paid By</th><th>Method</th><th class="r">Amount</th><th>Receipt</th><th></th></tr></thead><tbody>' +
       (rows.length ? rows.map(function (e) {
-        return '<tr><td>' + (fmtDate(e.date) || '<span class="pill warn">Needs Date</span>') + '</td><td><b>' + esc(e.payee) + '</b>' + (e.notes ? '<div class="meta">' + esc(e.notes) + '</div>' : '') + '</td><td>' + esc(e.category) + '</td><td class="meta">' + esc(e.method) + '</td>' +
+        return '<tr><td>' + (fmtDate(e.date) || '<span class="pill warn">' + (/Projected/.test(e.notes) ? 'At Sale' : 'Needs Date') + '</span>') + '</td><td><b>' + esc(e.payee) + '</b>' + (notesOf(e) ? '<div class="meta">' + esc(notesOf(e)) + '</div>' : '') + '</td><td>' + esc(e.category) + '</td><td>' + (payerOf(e) ? esc(payerOf(e)) : '<span class="meta">—</span>') + '</td><td class="meta">' + esc(e.method) + '</td>' +
           '<td class="r num">' + money(e.amount) + '</td><td>' + (e.receiptUrl ? '<a href="' + esc(e.receiptUrl) + '" target="_blank" rel="noopener">View</a>' : '<span class="meta">—</span>') + '</td>' +
           '<td class="r"><button class="btn sm" data-xe="' + esc(e.id) + '">Edit</button> <button class="btn sm danger" data-xd="' + esc(e.id) + '">Delete</button></td></tr>';
-      }).join('') : '<tr><td colspan="7" class="empty">No expenses match.</td></tr>') + '</tbody></table></div>';
+      }).join('') : '<tr><td colspan="8" class="empty">No expenses match.</td></tr>') + '</tbody></table></div>';
     $app.innerHTML = html;
     var bindF = function (id, k) { var el = document.getElementById(id); el.onchange = function () { EX.f[k] = el.value; drawExpenses(); }; };
     bindF('xc', 'cat'); bindF('xf', 'from'); bindF('xt', 'to');
@@ -803,15 +828,17 @@
       var rows = res[0].items.filter(function (e) { return e.linkId === f.id; }).sort(function (a, b) { return (b.date || '0') < (a.date || '0') ? -1 : 1; });
       var total = rows.reduce(function (t, e) { return t + e.amount; }, 0), byCat = {};
       rows.forEach(function (e) { byCat[e.category || 'Other'] = (byCat[e.category || 'Other'] || 0) + e.amount; });
+      var byPay = {}; rows.forEach(function (e) { var k = payerOf(e) || 'Not recorded'; byPay[k] = (byPay[k] || 0) + e.amount; });
+      var pays = Object.keys(byPay).sort(function (a, b) { return byPay[b] - byPay[a]; }).map(function (k) { return '<span class="pill">' + esc(k) + ' ' + money(byPay[k], 0) + '</span>'; }).join(' ');
       var cats = Object.keys(byCat).sort(function (a, b) { return byCat[b] - byCat[a]; }).slice(0, 3).map(function (k) { return esc(k) + ' ' + money(byCat[k], 0); }).join(' · ');
-      host.innerHTML = '<div class="card tblwrap"><div class="spread" style="padding:16px 18px 14px;align-items:center"><div><div class="kpi"><div class="k">Total Expenses</div><div class="v" style="font-size:24px;margin-top:6px">' + money(total) + '</div><div class="meta">' + rows.length + ' entr' + (rows.length === 1 ? 'y' : 'ies') + (cats ? ' · ' + cats : '') + '</div></div></div>' +
+      host.innerHTML = '<div class="card tblwrap"><div class="spread" style="padding:16px 18px 14px;align-items:center"><div><div class="kpi"><div class="k">Total Expenses</div><div class="v" style="font-size:24px;margin-top:6px">' + money(total) + '</div><div class="meta">' + rows.length + ' entr' + (rows.length === 1 ? 'y' : 'ies') + (cats ? ' · ' + cats : '') + '</div>' + (rows.length ? '<div class="paidby" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px"><span class="meta" style="align-self:center">Paid by</span> ' + pays + '</div>' : '') + '</div></div>' +
         '<div class="row"><button class="btn sm" id="pxcsv">Export CSV</button><button class="btn sm gold" id="pxadd">Add Expense</button></div></div>' +
-        '<table class="t"><thead><tr><th>Date</th><th>Payee</th><th>Category</th><th>Method</th><th class="r">Amount</th><th>Receipt</th><th></th></tr></thead><tbody>' +
+        '<table class="t"><thead><tr><th>Date</th><th>Payee</th><th>Category</th><th>Paid By</th><th>Method</th><th class="r">Amount</th><th>Receipt</th><th></th></tr></thead><tbody>' +
         (rows.length ? rows.map(function (e) {
-          return '<tr><td>' + (fmtDate(e.date) || '<span class="pill warn">Needs Date</span>') + '</td><td><b>' + esc(e.payee) + '</b>' + (e.notes ? '<div class="meta">' + esc(e.notes) + '</div>' : '') + '</td><td>' + esc(e.category) + '</td><td class="meta">' + esc(e.method) + '</td>' +
+          return '<tr><td>' + (fmtDate(e.date) || '<span class="pill warn">' + (/Projected/.test(e.notes) ? 'At Sale' : 'Needs Date') + '</span>') + '</td><td><b>' + esc(e.payee) + '</b>' + (notesOf(e) ? '<div class="meta">' + esc(notesOf(e)) + '</div>' : '') + '</td><td>' + esc(e.category) + '</td><td>' + (payerOf(e) ? esc(payerOf(e)) : '<span class="meta">—</span>') + '</td><td class="meta">' + esc(e.method) + '</td>' +
             '<td class="r num">' + money(e.amount) + '</td><td>' + (e.receiptUrl ? '<a href="' + esc(e.receiptUrl) + '" target="_blank" rel="noopener">View</a>' : '<span class="meta">—</span>') + '</td>' +
             '<td class="r"><button class="btn sm" data-xe="' + esc(e.id) + '">Edit</button> <button class="btn sm danger" data-xd="' + esc(e.id) + '">Delete</button></td></tr>';
-        }).join('') : '<tr><td colspan="7" class="empty">No expenses on this property yet.</td></tr>') + '</tbody></table></div>';
+        }).join('') : '<tr><td colspan="8" class="empty">No expenses on this property yet.</td></tr>') + '</tbody></table></div>';
       document.getElementById('pxadd').onclick = function () { editExpense(null, f); };
       document.getElementById('pxcsv').onclick = function () { exportCsv(rows); };
       host.querySelectorAll('[data-xe]').forEach(function (b) { b.onclick = function () { editExpense(rows.filter(function (e) { return e.id === b.dataset.xe; })[0]); }; });
@@ -819,8 +846,8 @@
     }).catch(function (e) { host.innerHTML = '<p class="empty">' + esc(e.message || 'Could not load expenses.') + '</p>'; });
   }
   function exportCsv(rows) {
-    var head = ['Date', 'Payee', 'Category', 'Amount', 'Method', 'Property', 'Notes', 'Receipt'];
-    var lines = [head.join(',')].concat(rows.map(function (e) { return [e.date, e.payee, e.category, e.amount.toFixed(2), e.method, exLinkLabel(e), e.notes, e.receiptUrl].map(csvCell).join(','); }));
+    var head = ['Date', 'Payee', 'Category', 'Amount', 'Paid By', 'Method', 'Property', 'Notes', 'Receipt'];
+    var lines = [head.join(',')].concat(rows.map(function (e) { return [e.date, e.payee, e.category, e.amount.toFixed(2), payerOf(e), e.method, exLinkLabel(e), notesOf(e), e.receiptUrl].map(csvCell).join(','); }));
     var blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
     var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'LANA HOMES Expenses ' + todayISO() + '.csv'; document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
   }
@@ -832,9 +859,10 @@
       '<div class="field"><label>Date</label><input type="date" id="ed1" value="' + esc(e.date) + '"></div><div class="field"><label>Payee</label><input id="ed2" value="' + esc(e.payee || '') + '"></div>' +
       '<div class="field"><label>Category</label><select id="ed3">' + EX.cats.map(function (c) { return '<option' + (c === e.category ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('') + '</select></div>' +
       '<div class="field"><label>Amount (Negative For A Refund)</label><input id="ed4" inputmode="decimal" value="' + esc(e.amount) + '"></div>' +
+      '<div class="field"><label>Paid By</label><input id="ed9" list="ed9l" value="' + esc(payerOf(e)) + '" placeholder="Enrique, Zina, Aldo, Escrow"><datalist id="ed9l"><option>Enrique</option><option>Zina</option><option>Aldo</option><option>Escrow (at sale)</option><option>LANA HOMES LLC</option></datalist></div>' +
       '<div class="field"><label>Method</label><input id="ed5" value="' + esc(e.method || '') + '" placeholder="LLC Card, Zelle, Check"></div>' +
       '<div class="field"><label>Property</label><select id="ed6"><option value="general">General LLC</option>' + EX.props.map(function (p) { return '<option value="' + esc(p.id) + '"' + (p.id === cur ? ' selected' : '') + '>' + (isHolding(p) ? 'Holding · ' : 'Flip · ') + esc(p.address) + '</option>'; }).join('') + '</select></div></div>' +
-      '<div class="field"><label>Notes</label><textarea id="ed7" rows="2">' + esc(e.notes || '') + '</textarea></div>' +
+      '<div class="field"><label>Notes</label><textarea id="ed7" rows="2">' + esc(notesOf(e)) + '</textarea></div>' +
       '<div class="field"><label>Receipt (PDF Or Photo, Under 10 MB)' + (e.receiptUrl ? ' · <a href="' + esc(e.receiptUrl) + '" target="_blank" rel="noopener">Current</a>' : '') + '</label><input type="file" id="ed8" accept="application/pdf,image/jpeg,image/png,image/heic,image/webp"></div>' +
       '<div class="row"><button class="btn gold" id="ok">Save</button><button class="btn" id="cx">Cancel</button></div>', function () {
       document.getElementById('cx').onclick = closeModal;
@@ -842,8 +870,10 @@
         var b = this; b.disabled = true;
         var link = document.getElementById('ed6').value;
         var body = { id: e.id || '', date: document.getElementById('ed1').value, payee: document.getElementById('ed2').value, category: document.getElementById('ed3').value,
-          amount: C.n(document.getElementById('ed4').value), method: document.getElementById('ed5').value, notes: document.getElementById('ed7').value,
+          amount: C.n(document.getElementById('ed4').value), method: document.getElementById('ed5').value, paidBy: document.getElementById('ed9').value.trim(), notes: document.getElementById('ed7').value,
           linkType: link === 'general' ? 'general' : 'flip', linkId: link === 'general' ? '' : link };
+        // Keep the payer in the notes too, so it shows even before the backend stores paidBy natively.
+        body.notes = (body.paidBy ? 'Paid by: ' + body.paidBy + (body.notes.trim() ? ' · ' : '') : '') + body.notes.trim();
         var file = document.getElementById('ed8').files[0];
         var up = file ? (file.size > 10 * 1024 * 1024 ? Promise.reject(new Error('Receipts must be under 10 MB.')) : readB64(file).then(function (d) { return api('uploadReceipt', { name: file.name, mime: file.type, data: d }); })) : Promise.resolve(null);
         up.then(function (r) { if (r) { body.receiptId = r.receiptId; body.receiptName = r.receiptName; } return api('saveExpense', { expense: body }); })

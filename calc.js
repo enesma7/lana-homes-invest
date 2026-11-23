@@ -8,6 +8,27 @@
     if (!isFinite(d1) || !isFinite(d2)) return 0;
     return Math.round((d2 - d1) / 86400000);
   }
+  function isoAdd(iso, k) { var t = Date.parse(iso + 'T00:00:00Z'); return isFinite(t) ? new Date(t + k * 86400000).toISOString().slice(0, 10) : ''; }
+  // California property-tax half-years (fiscal year Jul 1 - Jun 30): Jul-Dec installment due Nov 1, Jan-Jun due Feb 1.
+  function taxHalf(iso) {
+    var y = +iso.slice(0, 4), m = +iso.slice(5, 7);
+    return m >= 7 ? { s: y + '-07-01', end: (y + 1) + '-01-01', due: y + '-11-01' } : { s: y + '-01-01', end: y + '-07-01', due: y + '-02-01' };
+  }
+  /** Tax prorations: annual tax = price x rate, 365-day year; an installment counts as paid on its due date by whoever owns the home then. */
+  function taxProrations(annual, close, sale) {
+    var daily = annual / 365, out = { annual: annual, buy: 0, sell: 0, installments: 0, count: 0, close: close, sale: sale };
+    if (!close || !sale || sale <= close) return null;
+    var p0 = taxHalf(close), pn = taxHalf(sale);
+    out.buyPaid = close >= p0.due;  // seller already paid this half: you reimburse close -> end; else seller credits start -> close
+    out.buyDays = out.buyPaid ? daysBetween(close, p0.end) : daysBetween(p0.s, close);
+    out.buy = (out.buyPaid ? 1 : -1) * daily * out.buyDays;
+    out.sellPaid = sale >= pn.due;   // you paid this half: the next buyer credits you sale -> end; else you credit them start -> sale
+    out.sellDays = out.sellPaid ? daysBetween(sale, pn.end) : daysBetween(pn.s, sale);
+    out.sell = (out.sellPaid ? -1 : 1) * daily * out.sellDays;
+    for (var p = p0, guard = 0; p.s <= pn.s && guard < 40; p = taxHalf(p.end), guard++) if (close < p.due && p.due <= sale) out.count++;
+    out.installments = out.count * annual / 2;
+    return out;
+  }
   function annualize(roi, days) {
     if (!days || days <= 0 || !isFinite(roi)) return { simple: null, compound: null };
     var c = 1 + roi > 0 ? Math.pow(1 + roi, 365 / days) - 1 : -1;
@@ -19,7 +40,9 @@
     var price = n(i.purchasePrice), sale = n(i.salePrice);
     var loan = i.loanAmount === '' || i.loanAmount == null ? 0 : n(i.loanAmount);
     var rate = n(i.interestRate) / 100, points = n(i.pointsPct) / 100;
-    var days = n(i.daysHeld) || daysBetween(i.fundingDate, i.payoffDate);
+    var auto = i.autoProrations === true || i.autoProrations === 'true';
+    var days = n(i.daysHeld) || daysBetween(i.fundingDate, i.payoffDate) || (auto ? Math.round(n(i.holdMonths) * 365 / 12) : 0);
+    var saleDate = auto ? (i.payoffDate || (i.fundingDate && days ? isoAdd(i.fundingDate, days) : '')) : '';
     var loanFee = loan * points + n(i.originationFee);
     var down = price - loan;
     // Itemized closing costs (Enrique's real deals): % of price for escrow/title, flat for fixed fees, transfer tax per $1,000.
@@ -28,17 +51,22 @@
       ['Loan Docs / Processing', n(i.buyLoanDocs)], ['Recording', n(i.buyRecording)], ['Courier', n(i.buyCourier)],
       ['Notary', n(i.buyNotary)], ['Wire Fees', n(i.wireFees)], ['Other Buying Costs', n(i.buyClosing)]];
     var buying = buyItems.reduce(function (t, x) { return t + x[1]; }, 0);
-    var insPre = n(i.insurancePrepaid);
-    var taxSigned = i.taxIsCredit === false || i.taxIsCredit === 'false' ? n(i.taxProration) : -n(i.taxProration);
+    var blank = function (v) { return v === '' || v == null; };
+    // Prepaid insurance: the 12-month hazard premium collected at purchase (Auto = one year of the insurance assumption).
+    var insPre = auto && blank(i.insurancePrepaid) ? n(i.insuranceAnnual) : n(i.insurancePrepaid);
+    var annualTax = price * n(i.taxRatePct) / 100;
+    var tp = auto ? taxProrations(annualTax, i.fundingDate, saleDate) : null;
+    var taxSigned = blank(i.taxProration) ? (tp ? tp.buy : 0) : (i.taxIsCredit === false || i.taxIsCredit === 'false' ? n(i.taxProration) : -n(i.taxProration));
+    var sellPror = blank(i.sellTaxProration) ? (tp ? tp.sell : 0) : n(i.sellTaxProration);
     var hoaBuy = n(i.hoaAtPurchase), refund = n(i.purchaseRefund);
     var cashToClose = down + loanFee + buying + insPre + taxSigned + hoaBuy - refund;
     var rehabUsed = n(i.rehabBudget) * (1 + n(i.contingencyPct) / 100);
     var interest = loan * rate * days / 365;
     // Holding costs auto-calc from the hold period; any override ($) field that is filled in wins.
-    var blank = function (v) { return v === '' || v == null; };
     var yr = days / 365;
-    var taxAuto = price * n(i.taxRatePct) / 100 * yr;
-    var insAuto = Math.max(0, n(i.insuranceAnnual) * yr - n(i.insurancePrepaid));
+    // With dates, holding taxes = installments you pay while you own it; the prorations cover the rest, so nothing is counted twice.
+    var taxAuto = tp ? tp.installments : annualTax * yr;
+    var insAuto = Math.max(0, n(i.insuranceAnnual) * yr - insPre);
     var utilAuto = n(i.utilitiesMonthly) * yr * 12;
     var taxHold = blank(i.propertyTaxes) ? taxAuto : n(i.propertyTaxes);
     var insHold = blank(i.insuranceHold) ? insAuto : n(i.insuranceHold);
@@ -51,7 +79,7 @@
       ['Owner’s Title Policy', sale * n(i.sellTitlePct) / 100], ['Recording', n(i.sellRecording)], ['NHD Report', n(i.nhd)],
       ['Home Warranty', n(i.homeWarranty)], ['Notary', n(i.sellNotary)], ['County Transfer Tax', sale / 1000 * n(i.countyTTper1k)],
       ['City Transfer Tax', sale / 1000 * n(i.cityTTper1k)], ['Wire Fees', n(i.sellWire)], ['Other Selling Closing', n(i.sellEscrow)],
-      ['Buyer Credits', n(i.buyerCredits)], ['Marketing / Misc', n(i.miscSelling)]];
+      ['Buyer Credits', n(i.buyerCredits)], ['Marketing / Misc', n(i.miscSelling)], ['Tax Proration At Sale', sellPror]];
     var selling = sellItems.reduce(function (t, x) { return t + x[1]; }, 0);
     var buyingCosts = loanFee + buying + insPre + taxSigned + hoaBuy - refund;
     var totalCost = price + buyingCosts + rehabUsed + holding + selling;
@@ -69,9 +97,9 @@
       holdingCosts: r2(holding), sellingCosts: r2(selling), totalCost: r2(totalCost), profit: r2(profit),
       cashInvested: r2(cashInvested), roiCash: roiCash, roiCost: roiCost, simpleAnnual: ann.simple, compoundAnnual: ann.compound,
       maxOffer: r2(maxOffer), over80: over80, rating: rating,
-      buyClosingItemized: r2(buying), taxHold: r2(taxHold), insuranceHold: r2(insHold), utilitiesHold: r2(utilHold), monthsHeld: Math.round(yr * 12 * 10) / 10
+      buyClosingItemized: r2(buying), buyClosingAll: r2(buying + insPre + taxSigned + hoaBuy - refund), insurancePrepaid: r2(insPre), taxProrationBuy: r2(taxSigned), taxProrationSell: r2(sellPror), saleDate: saleDate, taxHold: r2(taxHold), insuranceHold: r2(insHold), utilitiesHold: r2(utilHold), monthsHeld: Math.round(yr * 12 * 10) / 10
     };
-    Object.defineProperty(out, 'items', { value: { buying: buyItems.map(function (x) { return [x[0], r2(x[1])]; }), selling: sellItems.map(function (x) { return [x[0], r2(x[1])]; }) }, enumerable: false });
+    Object.defineProperty(out, 'items', { value: { tax: tp, buying: buyItems.concat([['Prepaid Insurance (12 Mo)', insPre], ['Tax Proration At Purchase', taxSigned], ['HOA At Purchase', hoaBuy], ['Escrow Refund After Close', -refund]]).map(function (x) { return [x[0], r2(x[1])]; }), selling: sellItems.map(function (x) { return [x[0], r2(x[1])]; }) }, enumerable: false });
     return out;
   }
 

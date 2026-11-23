@@ -290,3 +290,33 @@ details.brk summary::-webkit-details-marker{display:none}
 details.brk summary:after{content:"+";margin-left:8px;color:var(--meta)}
 details.brk[open] summary:after{content:"−"}
 details.brk .lines{margin-top:8px}
+
+/* Flip calculator: Purchase Price and ARV Sales Price on top */
+.calchero{padding:22px 24px}
+.calchero .ch-in{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+.calchero .field.big label{font-size:12px;letter-spacing:.12em;text-transform:uppercase;font-weight:700}
+.calchero .dollar{position:relative}
+.calchero .dollar span{position:absolute;left:16px;top:50%;transform:translateY(-50%);font-size:26px;color:#8a8a8a;pointer-events:none}
+.calchero .field.big input{font-size:30px;font-weight:700;padding:16px 16px 16px 40px;height:auto;font-variant-numeric:tabular-nums}
+.calchero .ch-kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:16px;padding-top:16px;border-top:1px solid rgba(0,0,0,.08)}
+.calchero .ck .k{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#777}
+.calchero .ck .v{font-size:20px;font-weight:700;margin-top:4px}
+.calchero .ck.good .v{color:var(--green)}.calchero .ck.bad .v{color:var(--red)}
+@media (max-width:700px){
+  .calchero{padding:18px 16px}
+  .calchero .ch-in{grid-template-columns:1fr;gap:12px}
+  .calchero .field.big input{font-size:26px;padding:14px 14px 14px 36px}
+  .calchero .ch-kpis{grid-template-columns:1fr 1fr}
+  .calchero .ck .v{font-size:18px}
+}
+
+/* Calculator results: big profit / loss headline */
+.pl-hero{border-radius:12px;padding:20px 22px;background:radial-gradient(600px 220px at 85% -40%,rgba(234,213,158,.22),transparent 70%),linear-gradient(135deg,#1B1A17,#000007);color:#fff}
+.pl-hero .k{font-size:11px;letter-spacing:.16em;text-transform:uppercase;font-weight:700;color:var(--gold1)}
+.pl-hero .v{font-size:46px;line-height:1.05;font-weight:800;margin-top:6px;background:var(--gold);-webkit-background-clip:text;background-clip:text;color:transparent;font-variant-numeric:tabular-nums}
+.pl-hero .s{font-size:13px;color:rgba(255,255,255,.72);margin-top:6px}
+.pl-hero.loss{background:radial-gradient(600px 220px at 85% -40%,rgba(255,255,255,.14),transparent 70%),var(--red)}
+.pl-hero.loss .k{color:#fff}
+.pl-hero.loss .v{background:none;color:#fff}
+.pl-hero.loss .s{color:rgba(255,255,255,.85)}
+@media (max-width:700px){.pl-hero{padding:16px 18px}.pl-hero .v{font-size:38px}}
