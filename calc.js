@@ -29,7 +29,16 @@
     var cashToClose = down + loanFee + buying + insPre + taxSigned + hoaBuy - refund;
     var rehabUsed = n(i.rehabBudget) * (1 + n(i.contingencyPct) / 100);
     var interest = loan * rate * days / 365;
-    var holdOther = n(i.propertyTaxes) + n(i.insuranceHold) + n(i.utilities) + n(i.hoaHold) + n(i.otherHold);
+    // Holding costs auto-calc from the hold period; any override ($) field that is filled in wins.
+    var blank = function (v) { return v === '' || v == null; };
+    var yr = days / 365;
+    var taxAuto = price * n(i.taxRatePct) / 100 * yr;
+    var insAuto = Math.max(0, n(i.insuranceAnnual) * yr - n(i.insurancePrepaid));
+    var utilAuto = n(i.utilitiesMonthly) * yr * 12;
+    var taxHold = blank(i.propertyTaxes) ? taxAuto : n(i.propertyTaxes);
+    var insHold = blank(i.insuranceHold) ? insAuto : n(i.insuranceHold);
+    var utilHold = blank(i.utilities) ? utilAuto : n(i.utilities);
+    var holdOther = taxHold + insHold + utilHold + n(i.hoaHold) + n(i.otherHold);
     var holding = interest + holdOther;
     var listing = sale * n(i.listingPct) / 100, buyerComm = sale * n(i.buyerPct) / 100;
     var selling = listing + buyerComm + n(i.sellEscrow) + n(i.buyerCredits) + n(i.homeWarranty) + n(i.miscSelling);
@@ -48,7 +57,8 @@
       cashToClose: r2(cashToClose), buyingCosts: r2(buyingCosts), rehabUsed: r2(rehabUsed), interest: r2(interest),
       holdingCosts: r2(holding), sellingCosts: r2(selling), totalCost: r2(totalCost), profit: r2(profit),
       cashInvested: r2(cashInvested), roiCash: roiCash, roiCost: roiCost, simpleAnnual: ann.simple, compoundAnnual: ann.compound,
-      maxOffer: r2(maxOffer), over80: over80, rating: rating
+      maxOffer: r2(maxOffer), over80: over80, rating: rating,
+      taxHold: r2(taxHold), insuranceHold: r2(insHold), utilitiesHold: r2(utilHold), monthsHeld: Math.round(yr * 12 * 10) / 10
     };
   }
 
@@ -63,13 +73,14 @@
     var end = sold ? f.saleDate : (today || new Date().toISOString().slice(0, 10));
     var days = f.purchaseDate && end ? daysBetween(f.purchaseDate, end) : 0;
     var ann = sold && f.purchaseDate && f.saleDate ? annualize(roiCash, days) : { simple: null, compound: null };
-    var inv = (f.investors || []).map(function (x) {
+    var meta = (f.investors || []).filter(function (x) { return x && x.payout; })[0];
+    var inv = (f.investors || []).filter(function (x) { return x && !x.payout; }).map(function (x) {
       var share = profit * n(x.split);
       return { name: x.name, capital: n(x.capital), split: n(x.split), profitShare: r2(share), distribution: r2(n(x.capital) + share) };
     });
     return { totalCost: r2(totalCost), profit: r2(profit), roiCash: roiCash, roiCost: roiCost, daysHeld: days,
       needsSaleDate: sold && !f.saleDate, needsPurchaseDate: !f.purchaseDate, simpleAnnual: ann.simple, compoundAnnual: ann.compound,
-      investors: inv, rehabVariance: r2(n(f.rehabSpent) - n(f.rehabBudget)) };
+      investors: inv, payout: meta ? meta.payout : null, rehabVariance: r2(n(f.rehabSpent) - n(f.rehabBudget)) };
   }
 
   /** A holding (kept property): equity, cash flow, cash-on-cash and total return on cash invested. */

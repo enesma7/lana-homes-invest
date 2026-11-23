@@ -150,7 +150,7 @@
           '<label class="check sw"><input type="checkbox" id="trust" checked><span class="swi" aria-hidden="true"></span> Trust This Device For 30 Days</label>' +
           '<button class="btn gold block" type="submit" style="margin-top:16px">Sign In <span aria-hidden="true">→</span></button>' +
           '<button class="btn ghost block" type="button" id="back">Use A Different Email</button></form>' +
-        '</div><div class="auth-trust"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>One-time email codes · No passwords stored</div><div class="auth-mfoot">© LANA HOMES LLC</div></section></div>';
+        '</div><div class="auth-mfoot">© LANA HOMES LLC</div></section></div>';
     var f1 = document.getElementById('f1'), f2 = document.getElementById('f2'), em = document.getElementById('em');
     f1.onsubmit = function (ev) {
       ev.preventDefault(); var email = em.value.trim().toLowerCase(); var b = f1.querySelector('button'); b.disabled = true;
@@ -429,6 +429,7 @@
         '<hr class="sep"><h2>Investors</h2><p class="meta">Capital returned first, then the profit split</p>' +
         (x.investors.length ? '<table class="t"><thead><tr><th>Investor</th><th class="r">Capital</th><th class="r">Split</th><th class="r">Profit Share</th><th class="r">Payout</th></tr></thead><tbody>' + x.investors.map(function (i) { return '<tr><td>' + esc(i.name) + '</td><td class="r num">' + money(i.capital, 0) + '</td><td class="r">' + pct(i.split, 1) + '</td><td class="r num">' + sMoney(i.profitShare, 0) + '</td><td class="r num"><b>' + money(i.distribution, 0) + '</b></td></tr>'; }).join('') + '</tbody></table>' : '<p class="empty">No investors listed.</p>') +
         '<hr class="sep"><div class="mini"><div>Purchased<b>' + (fmtDate(f.purchaseDate) || '<span class="pill warn">Needs Date</span>') + '</b></div><div>Sold<b>' + (sold ? soldCell(f) : '—') + '</b></div><div>Cash In<b>' + money(f.cashInvested, 0) + '</b></div></div></div></div>';
+      if (x.payout) html += payoutCard(x.payout);
       if (own) html += '<div class="label">Expenses</div><div id="proex"></div>';
       html += '<div class="label">Inventory Needs List</div><div id="invlist"></div>';
       if (f.access) {
@@ -462,6 +463,17 @@
     }).catch(function (e) { $app.innerHTML = '<p class="empty">' + esc(e.message) + '</p>'; });
   }
 
+  // Purchase To Payout: cash put in at purchase, who funded what, what the sale closing paid off, and who got paid.
+  function payoutCard(p) {
+    var ln = function (r, cls) { return '<div class="ln' + (cls ? ' ' + cls : '') + '"><span>' + esc(r[0]) + (r[2] ? '<em class="meta" style="display:block;font-style:normal">' + esc(r[2]) + '</em>' : '') + '</span><span class="num">' + (r[1] < 0 ? '<span class="neg">−' + money(-r[1]) + '</span>' : money(r[1])) + '</span></div>'; };
+    var block = function (title, rows, tot) { return rows && rows.length ? '<div class="label" style="margin:14px 0 4px">' + esc(title) + '</div><div class="lines">' + rows.map(function (r) { return ln(r); }).join('') + (tot ? ln(tot, 'tot') : '') + '</div>' : ''; };
+    return '<div class="label">' + esc(p.title || 'Purchase To Payout') + '</div><div class="grid g2"><div class="card rule"><h2>Invested</h2><p class="meta">' + esc(p.investedSub || 'Cash put in to buy, fix and hold') + '</p>' +
+      block('At Purchase', p.purchase, p.purchaseTotal) + block('Cash Invested By Partner', p.capital, p.capitalTotal) + '</div>' +
+      '<div class="card rule"><h2>' + esc(p.saleTitle || 'Paid Out') + '</h2><p class="meta">' + esc(p.saleSub || 'Sale closing, payoffs and partner payouts') + '</p>' +
+      block(p.saleLabel || 'At Sale Closing', p.sale, p.saleTotal) + block(p.paidLabel || 'Paid Out To', p.paid, p.paidTotal) + '</div></div>' +
+      (p.source ? '<p class="meta" style="margin-top:10px">Source: ' + esc(p.source) + '</p>' : '');
+  }
+
   function inviteModal(f) {
     modal('<h2>Invite User To ' + esc(f.address) + '</h2><p class="sub2">They’ll get an email invite and sign in with a one-time code. They only see the properties they’re invited to.</p>' +
       '<div class="field"><label>Email</label><input type="email" id="iem" required></div><div class="field"><label>Name (Optional)</label><input id="inm"></div>' +
@@ -489,7 +501,7 @@
   function editFlip(f, kind) {
     var isNew = !f; f = f || { investors: [], kind: kind || 'flip' };
     var hold = isHolding(f), FIELDS = hold ? HOLD_FIELDS : FLIP_FIELDS, SL = statusesOf(f);
-    var inv = (f.investors || []).map(function (i) { return i.name + ' | ' + i.capital + ' | ' + (Math.round(i.split * 10000) / 100); }).join('\n');
+    var inv = (f.investors || []).filter(function (i) { return !i.payout; }).map(function (i) { return i.name + ' | ' + i.capital + ' | ' + (Math.round(i.split * 10000) / 100); }).join('\n');
     modal('<h2>' + (isNew ? (hold ? 'New Holding' : 'New Flip') : 'Edit ' + esc(f.address)) + '</h2><div class="calcgrid">' + FIELDS.map(function (x) {
       return '<div class="field"><label>' + x[1] + '</label><input data-k="' + x[0] + '" type="' + (x[2] === 'date' ? 'date' : 'text') + '" ' + (x[2] === 'num' ? 'inputmode="decimal"' : '') + ' value="' + esc(f[x[0]] == null ? '' : f[x[0]]) + '"></div>';
     }).join('') + '</div>' + (isNew ? '<div class="field"><label>Status</label><select id="nst">' + SL.map(function (s) { return '<option' + (s === (hold ? 'Owned' : 'Active') ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select></div>' : '') +
@@ -498,7 +510,9 @@
       document.getElementById('cx').onclick = closeModal;
       document.getElementById('ok').onclick = function () {
         var body = {}; document.querySelectorAll('#modal [data-k]').forEach(function (el) { body[el.dataset.k] = el.value; });
-        body.investors = document.getElementById('invs').value.split('\n').map(function (l) { var p = l.split('|').map(function (s) { return s.trim(); }); return p[0] ? { name: p[0], capital: C.n(p[1]), split: C.n(p[2]) / 100 } : null; }).filter(Boolean);
+        var invTxt = document.getElementById('invs').value;
+        // Only send investors when edited, so the stored Purchase To Payout breakdown is kept.
+        if (isNew || invTxt.trim() !== inv.trim()) body.investors = invTxt.split('\n').map(function (l) { var p = l.split('|').map(function (s) { return s.trim(); }); return p[0] ? { name: p[0], capital: C.n(p[1]), split: C.n(p[2]) / 100 } : null; }).filter(Boolean);
         var nst = document.getElementById('nst'); if (nst) body.status = nst.value;
         if (isNew) body.kind = hold ? 'holding' : 'flip';
         var p = isNew ? api('createFlip', { flip: body }) : api('updateFlip', { id: f.id, flip: body });
@@ -539,10 +553,11 @@
     ['Purchase', [['purchasePrice', 'Purchase Price ($)'], ['loanAmount', 'Loan Amount ($)'], ['interestRate', 'Interest Rate (%/yr)'], ['pointsPct', 'Points (%)'], ['originationFee', 'Origination / Lender Fees ($)'], ['lender', 'Lender', 'text'], ['fundingDate', 'Loan Funded Date', 'date'], ['payoffDate', 'Payoff / Sale Date', 'date'], ['daysHeld', 'Or Days Held']]],
     ['Buying Closing Costs', [['buyClosing', 'Escrow / Title / Recording / Misc ($)'], ['insurancePrepaid', 'Prepaid Insurance ($)'], ['taxProration', 'Tax Proration ($)'], ['taxIsCredit', 'Tax Proration Is A Credit', 'bool'], ['hoaAtPurchase', 'HOA At Purchase ($)'], ['purchaseRefund', 'Escrow Refund After Close ($)']]],
     ['Rehab', [['rehabBudget', 'Rehab Budget ($)'], ['contingencyPct', 'Contingency (%)']]],
-    ['Holding', [['propertyTaxes', 'Property Taxes ($)'], ['insuranceHold', 'Insurance During Hold ($)'], ['utilities', 'Utilities ($)'], ['hoaHold', 'HOA During Hold ($)'], ['otherHold', 'Other Holding ($)'], ['interestOutOfPocket', 'Interest Paid Monthly Out Of Pocket', 'bool']]],
+    ['Holding', [['taxRatePct', 'Property Tax Rate (%/yr)'], ['insuranceAnnual', 'Insurance ($/yr)'], ['utilitiesMonthly', 'Utilities ($/mo)'], ['propertyTaxes', 'Property Taxes Override ($)', '', 'Auto'], ['insuranceHold', 'Insurance Override ($)', '', 'Auto'], ['utilities', 'Utilities Override ($)', '', 'Auto'], ['hoaHold', 'HOA During Hold ($)'], ['otherHold', 'Other Holding ($)'], ['interestOutOfPocket', 'Interest Paid Monthly Out Of Pocket', 'bool']]],
     ['Selling', [['salePrice', 'Sale Price / ARV ($)'], ['listingPct', 'Listing Commission (%)'], ['buyerPct', 'Buyer Commission (%)'], ['sellEscrow', 'Escrow / Title / Transfer Tax ($)'], ['buyerCredits', 'Buyer Credits ($)'], ['homeWarranty', 'Home Warranty ($)'], ['miscSelling', 'Marketing / Misc ($)']]]
   ];
-  var CALC_DEFAULTS = { interestRate: 8, pointsPct: 0, taxIsCredit: true, contingencyPct: 10, listingPct: 0, buyerPct: 2 };
+  // Holding defaults: tax 1.2%/yr of price; insurance $2,382/yr (Argonne's Bamboo policy, 4/10/2026 statement); utilities $150/mo (Argonne SCE ~$136 + water).
+  var CALC_DEFAULTS = { interestRate: 8, pointsPct: 0, taxIsCredit: true, contingencyPct: 10, listingPct: 0, buyerPct: 2, taxRatePct: 1.2, insuranceAnnual: 2382, utilitiesMonthly: 150 };
   function viewCalculator(est) {
     var inputs = Object.assign({}, CALC_DEFAULTS, est ? est.inputs : {});
     if (est) { inputs.name = est.name; inputs.address = est.address; }
@@ -552,7 +567,7 @@
       html += '<div class="label" style="margin-top:6px">' + sec[0] + '</div><div class="calcgrid">' + sec[1].map(function (x) {
         var k = x[0], v = inputs[k] == null ? '' : inputs[k];
         if (x[2] === 'bool') return '<label class="check" style="margin-bottom:12px"><input type="checkbox" data-k="' + k + '"' + (v === true || v === 'true' ? ' checked' : '') + '> ' + x[1] + '</label>';
-        return '<div class="field"><label>' + x[1] + '</label><input data-k="' + k + '" type="' + (x[2] === 'date' ? 'date' : 'text') + '"' + (x[2] ? '' : ' inputmode="decimal"') + ' value="' + esc(v) + '"></div>';
+        return '<div class="field"><label>' + x[1] + '</label><input data-k="' + k + '" type="' + (x[2] === 'date' ? 'date' : 'text') + '"' + (x[2] ? '' : ' inputmode="decimal"') + (x[3] ? ' placeholder="' + esc(x[3]) + '" data-auto="' + k + '"' : '') + ' value="' + esc(v) + '"></div>';
       }).join('') + '</div>';
     });
     html += '<div class="field"><label>Tie To A Flip (Optional)</label><select data-k="flipId" id="cflip"><option value="">None</option></select></div></form></div><div><div class="card rule" id="cres"></div><div class="row" style="margin-top:16px">' +
@@ -569,13 +584,14 @@
     var paint = function () {
       var i = read(), r = C.estimate(i), ln = function (k, v, cls) { return '<div class="ln' + (cls ? ' ' + cls : '') + '"><span>' + k + '</span><span class="num">' + v + '</span></div>'; };
       var tone = r.rating === 'green' ? 'good' : r.rating === 'red' ? 'bad' : 'gold';
-      document.getElementById('cres').innerHTML = '<h2>Results</h2><p class="meta">' + (r.daysHeld ? r.daysHeld + ' days held · interest by actual days / 365' : 'Add dates or days held to compute interest and annualized return') + '</p>' +
+      document.getElementById('cres').innerHTML = '<h2>Results</h2><p class="meta">' + (r.daysHeld ? r.daysHeld + ' days held (' + r.monthsHeld + ' mo) · interest, taxes, insurance and utilities prorated by days / 365' : 'Add dates or days held to compute interest, holding costs and annualized return') + '</p>' +
         '<div class="row" style="justify-content:space-around;margin:12px 0">' + donut(r.roiCash || 0, 1, pct(r.roiCash, 0), 'Return On Cash', tone, 120) + donut(r.simpleAnnual || 0, 1, r.simpleAnnual == null ? '—' : pct(r.simpleAnnual, 0), 'Annualized (Simple)', tone, 120) + '</div>' +
         '<div class="lines">' + ln('Loan / LTV', money(r.loanAmount, 0) + ' · ' + pct(r.ltv)) + ln('Cash To Close', money(r.cashToClose)) + ln('Buying Costs (Net)', money(r.buyingCosts)) + ln('Rehab (With Contingency)', money(r.rehabUsed)) +
-        ln('Loan Interest', money(r.interest)) + ln('Holding Costs', money(r.holdingCosts)) + ln('Selling Costs', money(r.sellingCosts)) + ln('Total Cost', money(r.totalCost), 'tot') +
+        ln('Loan Interest', money(r.interest)) + ln('Property Taxes' + (i.propertyTaxes === '' ? ' (Auto)' : ''), money(r.taxHold)) + ln('Insurance' + (i.insuranceHold === '' ? ' (Auto)' : ''), money(r.insuranceHold)) + ln('Utilities' + (i.utilities === '' ? ' (Auto)' : ''), money(r.utilitiesHold)) + ln('Holding Costs (Total)', money(r.holdingCosts)) + ln('Selling Costs', money(r.sellingCosts)) + ln('Total Cost', money(r.totalCost), 'tot') +
         ln('Profit', sMoney(r.profit), 'tot') + ln('Cash Invested', money(r.cashInvested)) + ln('Return On Cash', sPct(r.roiCash)) + ln('Return On Total Cost', sPct(r.roiCost)) +
         ln('Annualized Simple / Compound', r.simpleAnnual == null ? '—' : sPct(r.simpleAnnual) + ' / ' + sPct(r.compoundAnnual)) + ln('Max Offer (80% Of ARV − Rehab)', money(r.maxOffer, 0)) + '</div>' +
         (r.over80 ? '<p class="note bad" style="margin-top:12px">Purchase price is over 80% of the sale price.</p>' : '');
+      var ph = { propertyTaxes: r.taxHold, insuranceHold: r.insuranceHold, utilities: r.utilitiesHold }; document.querySelectorAll('#cf [data-auto]').forEach(function (el) { el.placeholder = 'Auto: ' + money(ph[el.dataset.auto] || 0); });
       animate(); return { i: i, r: r };
     };
     document.getElementById('cf').addEventListener('input', paint); document.getElementById('cf').addEventListener('change', paint); paint();
