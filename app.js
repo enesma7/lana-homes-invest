@@ -136,7 +136,7 @@
         '<div class="ab-top"><div class="brand light">' + mark + '<span class="tx"><span class="wm">LANA HOMES</span><span class="sub">INVESTMENTS</span></span></div></div>' +
         '<div class="ab-copy"><div class="ab-kicker">Private Investor Portal</div><h2>Every flip and holding,<br><span class="goldtxt">down to the dollar.</span></h2>' +
         '<p>Live returns, cash in, rehab spend and investor payouts, in one secure place.</p>' +
-        '<div class="ab-stats"><div><b>Flips</b><span>Status To Sale</span></div><div><b>Holdings</b><span>Cash Flow &amp; NOI</span></div><div><b>Secure</b><span>Email Code Sign-In</span></div></div></div>' +
+        '<div class="ab-stats"><div><b>Flips</b><span>Purchase To Payout</span></div><div><b>Holdings</b><span>Cash Flow &amp; NOI</span></div><div><b>Secure</b><span>Email Code Sign-In</span></div></div></div>' +
         '<div class="ab-foot">© LANA HOMES LLC</div></section>' +
       '<section class="auth-main"><div class="auth-mobile-brand">' + mark + '<span class="tx"><span class="wm">LANA HOMES</span><span class="sub">INVESTMENTS</span></span></div>' +
         '<div class="auth-card"><div class="steps"><span class="on" id="s1">1 · Email</span><i></i><span id="s2">2 · Code</span></div>' +
