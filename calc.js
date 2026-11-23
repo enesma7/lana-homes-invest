@@ -1,4 +1,4 @@
-/* LANA HOMES Flips — calculator math (Star's spec). Pure functions; also loaded by node tests. */
+/* LANA HOMES Investments — calculator math (Star's spec). Pure functions; also loaded by node tests. */
 (function (root) {
   function n(v) { var x = Number(String(v == null ? '' : v).replace(/[$,\s%]/g, '')); return isFinite(x) ? x : 0; }
   function r2(x) { return Math.round(x * 100) / 100; }
@@ -72,6 +72,23 @@
       investors: inv, rehabVariance: r2(n(f.rehabSpent) - n(f.rehabBudget)) };
   }
 
-  var api = { estimate: estimate, flip: flip, daysBetween: daysBetween, annualize: annualize, n: n };
+  /** A holding (kept property): equity, cash flow, cash-on-cash and total return on cash invested. */
+  function holding(h, today) {
+    var value = n(h.currentValue), bal = n(h.loanBalance), cash = n(h.cashInvested);
+    var allIn = n(h.purchasePrice) + n(h.buyClosingCosts) + n(h.rehabSpent);
+    var inc = n(h.monthlyIncome), exp = n(h.monthlyExpenses), cf = inc - exp;
+    var hasIncome = inc !== 0 || exp !== 0;
+    var equity = value - bal;
+    var end = h.status === 'Sold' && h.saleDate ? h.saleDate : (today || new Date().toISOString().slice(0, 10));
+    var days = h.purchaseDate ? daysBetween(h.purchaseDate, end) : null;
+    var months = days == null ? null : Math.max(0, Math.floor(days / 30.4375));
+    var cfToDate = months == null ? 0 : cf * months;
+    return { value: r2(value), loanBalance: r2(bal), cashInvested: r2(cash), allIn: r2(allIn), equity: r2(equity), hasIncome: hasIncome,
+      monthlyCashFlow: r2(cf), annualCashFlow: r2(cf * 12), cashOnCash: cash > 0 && hasIncome ? cf * 12 / cash : null,
+      equityRoi: cash > 0 && value > 0 ? (equity - cash) / cash : null,
+      totalRoi: cash > 0 && value > 0 ? (equity - cash + cfToDate) / cash : null, cashFlowToDate: r2(cfToDate), monthsHeld: months, daysHeld: days };
+  }
+
+  var api = { estimate: estimate, flip: flip, holding: holding, daysBetween: daysBetween, annualize: annualize, n: n };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.FlipCalc = api;
 })(this);

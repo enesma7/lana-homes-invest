@@ -1,9 +1,12 @@
-/* LANA HOMES Flips — single-page app (no build step). */
+/* LANA HOMES Investments — flips, holdings and the LLC expense ledger. Single-page app (no build step). */
 (function () {
   'use strict';
   var CFG = window.FLIPS_CONFIG || {};
   var C = window.FlipCalc;
   var STATUSES = ['Estimate', 'In Escrow', 'Rehab', 'Active', 'Pending', 'Sold'];
+  var HSTATUSES = ['Owned', 'Rehab', 'Rented', 'Vacant', 'For Sale', 'Sold'];
+  function isHolding(f) { return f && f.kind === 'holding'; }
+  function statusesOf(f) { return isHolding(f) ? HSTATUSES : STATUSES; }
   var S = { token: sessionStorage.getItem('fl_token') || '', user: null, flips: null };
   var $app = document.getElementById('app');
 
@@ -22,7 +25,7 @@
   function devKey(email) { return 'fl_dev_' + String(email || '').toLowerCase(); }
 
   function api(action, body) {
-    if (!CFG.API_URL) return Promise.reject(Object.assign(new Error('The Flips service is not connected yet.'), { code: 'NO_API' }));
+    if (!CFG.API_URL) return Promise.reject(Object.assign(new Error('The Investments service is not connected yet.'), { code: 'NO_API' }));
     body = Object.assign({ action: action, token: S.token }, body || {});
     return fetch(CFG.API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(body), redirect: 'follow', credentials: 'omit', cache: 'no-store' })
       .then(function (r) { return r.json(); })
@@ -79,7 +82,7 @@
   function renderLogin() {
     var qs = new URLSearchParams(location.search), pre = qs.get('email') || localStorage.getItem('fl_last_email') || '';
     $app.innerHTML = '<div class="login"><div class="card rule"><h1>Sign In</h1><p class="lead">Enter your email and we’ll send you a one-time code.</p>' +
-      (CFG.API_URL ? '' : '<p class="note bad">The Flips service is not connected yet.</p>') +
+      (CFG.API_URL ? '' : '<p class="note bad">The Investments service is not connected yet.</p>') +
       '<form id="f1"><div class="field"><label for="em">Email</label><input id="em" type="email" autocomplete="email" required value="' + esc(pre) + '"></div>' +
       '<button class="btn gold" type="submit">Email Me A Code</button></form>' +
       '<form id="f2" hidden><p class="sub2" id="sentto"></p><div class="field"><label for="cd">6-Digit Code</label><input id="cd" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></div>' +
@@ -123,8 +126,8 @@
   function renderChrome() {
     var tabs = document.getElementById('tabs'), who = document.getElementById('who');
     if (!S.user) { tabs.hidden = true; who.innerHTML = ''; return; }
-    var items = [['#/', 'Dashboard'], ['#/flips', 'Flips'], ['#/calculator', 'Calculator'], ['#/estimates', isOwner() ? 'All Estimates' : 'My Estimates'], ['#/archive', 'Archive'], ['#/resources', 'Resources']];
-    if (isOwner()) items.push(['#/admin', 'Admin']);
+    var items = [['#/', 'Dashboard'], ['#/flips', 'Flips'], ['#/holdings', 'Holdings'], ['#/calculator', 'Calculator'], ['#/estimates', isOwner() ? 'All Estimates' : 'My Estimates'], ['#/archive', 'Archive'], ['#/resources', 'Resources']];
+    if (isOwner()) { items.push(['#/expenses', 'Expenses']); items.push(['#/admin', 'Admin']); }
     tabs.innerHTML = items.map(function (x) { return '<a href="' + x[0] + '" data-h="' + x[0] + '">' + x[1] + '</a>'; }).join('');
     tabs.hidden = false;
     who.innerHTML = '<span><b>' + esc(S.user.name || S.user.email) + '</b>' + (isOwner() ? ' · Owner' : '') + '</span><button class="btn sm" id="lo">Sign Out</button>';
@@ -143,6 +146,8 @@
     if (h === '#/estimates') return viewEstimates();
     if ((m = h.match(/^#\/estimate\/([\w-]+)/))) return viewEstimate(m[1]);
     if (h === '#/resources') return viewResources();
+    if (h === '#/holdings') return viewHoldings();
+    if (h === '#/expenses') return isOwner() ? viewExpenses() : (location.hash = '#/');
     if (h === '#/admin') return isOwner() ? viewAdmin() : (location.hash = '#/');
     location.hash = '#/';
   }
@@ -170,8 +175,9 @@
   }
   function viewDashboard() {
     loading();
-    loadFlips(true).then(function (flips) {
+    loadFlips(true).then(function (all) {
       var today = todayISO();
+      var flips = all.filter(function (f) { return !isHolding(f); }), holds = all.filter(function (f) { return isHolding(f) && f.status !== 'Sold'; });
       var rows = flips.map(function (f) { return { f: f, x: C.flip(f, today) }; });
       var sold = rows.filter(function (r) { return r.f.status === 'Sold'; }), open = rows.filter(function (r) { return r.f.status !== 'Sold'; });
       var sum = function (a, fn) { return a.reduce(function (s, r) { return s + fn(r); }, 0); };
@@ -199,6 +205,13 @@
         multiDonut(rows.map(function (r, i) { return { v: Number(r.f.cashInvested) || 0, color: PALETTE[i % PALETTE.length] }; }), '$' + Math.round((capOpen + capSold) / 1000).toLocaleString('en-US') + 'K', 'Total Cash In') +
         '<div class="legend">' + rows.map(function (r, i) { return '<span><i style="background:' + PALETTE[i % PALETTE.length] + '"></i>' + esc(r.f.address) + '</span>'; }).join('') + '</div></div></div></div>';
       html += '<div class="label">Open Flips</div>' + flipCards(open) + '<div class="label">Recently Sold</div>' + flipCards(sold.slice(0, 4));
+      if (holds.length) {
+        var hx = holds.map(function (f) { return C.holding(f); });
+        var hs = function (k) { return hx.reduce(function (t, x) { return t + (x[k] || 0); }, 0); };
+        html += '<div class="label">Holdings</div><div class="grid g4">' + kpi('Holdings Value', money(hs('value'), 0), holds.length + ' propert' + (holds.length === 1 ? 'y' : 'ies')) +
+          kpi('Equity', sMoney(hs('equity'), 0), 'Value minus loan balances', 'good') + kpi('Monthly Cash Flow', hx.some(function (x) { return x.hasIncome; }) ? sMoney(hs('monthlyCashFlow'), 0) : '<span class="pill warn">Needs Data</span>', 'Income minus expenses') +
+          kpi('Cash In Holdings', money(hs('cashInvested'), 0), 'Purchase cash plus improvements') + '</div>' + holdingCards(holds);
+      }
       $app.innerHTML = html; bindCards(); animate();
     }).catch(fail);
   }
@@ -221,7 +234,7 @@
     loading();
     loadFlips(true).then(function (flips) {
       var today = todayISO();
-      var rows = flips.filter(function (f) { return archive ? f.status === 'Sold' : f.status !== 'Sold'; }).map(function (f) { return { f: f, x: C.flip(f, today) }; });
+      var rows = flips.filter(function (f) { return !isHolding(f) && (archive ? f.status === 'Sold' : f.status !== 'Sold'); }).map(function (f) { return { f: f, x: C.flip(f, today) }; });
       var html = '<div class="spread"><div><h1>' + (archive ? 'Archive' : 'Flips') + '</h1><p class="lead">' + (archive ? 'Every sold flip, with final profit and return.' : 'Open flips by status. Sold flips move to the Archive.') + '</p></div>' +
         (isOwner() && !archive ? '<button class="btn gold" id="nf">New Flip</button>' : '') + '</div>';
       if (!archive) {
@@ -244,6 +257,7 @@
   function viewFlip(id) {
     loading();
     api('getFlip', { id: id }).then(function (f) {
+      if (isHolding(f)) return renderHolding(f);
       var x = C.flip(f, todayISO()), sold = f.status === 'Sold', can = f.canManage, own = isOwner();
       var ln = function (k, v, cls) { return '<div class="ln' + (cls ? ' ' + cls : '') + '"><span>' + k + '</span><span class="num">' + v + '</span></div>'; };
       var budgetPct = f.rehabBudget ? Math.min(1.5, f.rehabSpent / f.rehabBudget) : 0;
@@ -303,9 +317,9 @@
   }
 
   function inviteModal(f) {
-    modal('<h2>Invite User To ' + esc(f.address) + '</h2><p class="sub2">They’ll get an email invite and sign in with a one-time code. They only see the flips they’re invited to.</p>' +
+    modal('<h2>Invite User To ' + esc(f.address) + '</h2><p class="sub2">They’ll get an email invite and sign in with a one-time code. They only see the properties they’re invited to.</p>' +
       '<div class="field"><label>Email</label><input type="email" id="iem" required></div><div class="field"><label>Name (Optional)</label><input id="inm"></div>' +
-      (isOwner() ? '<div class="field"><label>Role On This Flip</label><select id="irl"><option value="member">Member — View Only</option><option value="admin">Admin — Status, Numbers, Invites On This Flip</option></select></div>' : '') +
+      (isOwner() ? '<div class="field"><label>Role On This Flip</label><select id="irl"><option value="member">Member — View Only</option><option value="admin">Admin — Status, Numbers, Invites On This Property</option></select></div>' : '') +
       '<div class="row"><button class="btn gold" id="ok">Send Invite</button><button class="btn" id="cx">Cancel</button></div>', function () {
       document.getElementById('cx').onclick = closeModal;
       document.getElementById('ok').onclick = function () {
@@ -321,12 +335,18 @@
     ['rehabBudget', 'Rehab Budget', 'num'], ['rehabSpent', 'Rehab Spent', 'num'], ['holdingCosts', 'Holding Costs', 'num'], ['sellingCosts', 'Selling Costs', 'num'],
     ['otherCosts', 'Other Costs', 'num'], ['otherCostsLabel', 'Other Costs Label', 'text'], ['adjustments', 'Credits (Reduce Cost)', 'num'], ['adjustmentsLabel', 'Credits Label', 'text'],
     ['salePrice', 'Sale Price (Or Projected)', 'num'], ['cashInvested', 'Cash Invested', 'num'], ['partners', 'Partners', 'text'], ['datesNote', 'Dates Note', 'text']];
-  function editFlip(f) {
-    var isNew = !f; f = f || { investors: [] };
+  var HOLD_FIELDS = [['address', 'Property Address', 'text'], ['city', 'City, State Zip', 'text'], ['purchaseDate', 'Purchase Close Date', 'date'], ['saleDate', 'Sale Close Date (If Sold)', 'date'],
+    ['purchasePrice', 'Purchase Price', 'num'], ['buyClosingCosts', 'Closing Costs', 'num'], ['loanAmount', 'Original Loan', 'num'], ['lender', 'Lender', 'text'], ['loanBalance', 'Current Loan Balance', 'num'],
+    ['rehabBudget', 'Improvements Budget', 'num'], ['rehabSpent', 'Improvements Spent', 'num'], ['cashInvested', 'Cash Invested', 'num'], ['currentValue', 'Current Value', 'num'],
+    ['monthlyIncome', 'Monthly Income (Rent)', 'num'], ['monthlyExpenses', 'Monthly Expenses (Mortgage, Tax, Insurance, HOA, Utilities)', 'num'], ['salePrice', 'Sale Price (If Sold)', 'num'],
+    ['partners', 'Partners', 'text'], ['datesNote', 'Dates Note', 'text']];
+  function editFlip(f, kind) {
+    var isNew = !f; f = f || { investors: [], kind: kind || 'flip' };
+    var hold = isHolding(f), FIELDS = hold ? HOLD_FIELDS : FLIP_FIELDS, SL = statusesOf(f);
     var inv = (f.investors || []).map(function (i) { return i.name + ' | ' + i.capital + ' | ' + (Math.round(i.split * 10000) / 100); }).join('\n');
-    modal('<h2>' + (isNew ? 'New Flip' : 'Edit ' + esc(f.address)) + '</h2><div class="calcgrid">' + FLIP_FIELDS.map(function (x) {
+    modal('<h2>' + (isNew ? (hold ? 'New Holding' : 'New Flip') : 'Edit ' + esc(f.address)) + '</h2><div class="calcgrid">' + FIELDS.map(function (x) {
       return '<div class="field"><label>' + x[1] + '</label><input data-k="' + x[0] + '" type="' + (x[2] === 'date' ? 'date' : 'text') + '" ' + (x[2] === 'num' ? 'inputmode="decimal"' : '') + ' value="' + esc(f[x[0]] == null ? '' : f[x[0]]) + '"></div>';
-    }).join('') + '</div>' + (isNew ? '<div class="field"><label>Status</label><select id="nst">' + STATUSES.map(function (s) { return '<option' + (s === 'Active' ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select></div>' : '') +
+    }).join('') + '</div>' + (isNew ? '<div class="field"><label>Status</label><select id="nst">' + SL.map(function (s) { return '<option' + (s === (hold ? 'Owned' : 'Active') ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select></div>' : '') +
       '<div class="field"><label>Investors (One Per Line: Name | Capital | Split %)</label><textarea id="invs" rows="3">' + esc(inv) + '</textarea></div>' +
       '<div class="field"><label>Notes</label><textarea data-k="notes" rows="3">' + esc(f.notes || '') + '</textarea></div><div class="row"><button class="btn gold" id="ok">Save</button><button class="btn" id="cx">Cancel</button></div>', function () {
       document.getElementById('cx').onclick = closeModal;
@@ -334,6 +354,7 @@
         var body = {}; document.querySelectorAll('#modal [data-k]').forEach(function (el) { body[el.dataset.k] = el.value; });
         body.investors = document.getElementById('invs').value.split('\n').map(function (l) { var p = l.split('|').map(function (s) { return s.trim(); }); return p[0] ? { name: p[0], capital: C.n(p[1]), split: C.n(p[2]) / 100 } : null; }).filter(Boolean);
         var nst = document.getElementById('nst'); if (nst) body.status = nst.value;
+        if (isNew) body.kind = hold ? 'holding' : 'flip';
         var p = isNew ? api('createFlip', { flip: body }) : api('updateFlip', { id: f.id, flip: body });
         p.then(function (r) { closeModal(); S.flips = null; toast('Saved.'); location.hash = '#/flip/' + r.id; if (!isNew) viewFlip(r.id); }).catch(fail);
       };
@@ -473,24 +494,182 @@
     }).catch(fail);
   }
 
+  /* ---------- holdings ---------- */
+  function holdingCards(list) {
+    if (!list.length) return '<p class="empty">No holdings yet.</p>';
+    return '<div class="grid g2">' + list.map(function (f) {
+      var x = C.holding(f);
+      return '<div class="card flipcard rule" data-id="' + esc(f.id) + '" tabindex="0"><div class="spread"><div><div class="addr">' + esc(f.address) + '</div><div class="meta">' + esc(f.city) + '</div></div>' +
+        '<div class="row"><span class="pill">' + esc(f.status) + '</span>' + (f.myRole === 'admin' ? '<span class="pill admin">Property Admin</span>' : '') + '</div></div>' +
+        '<div class="spread" style="margin-top:10px;align-items:center"><div class="mini" style="flex:1"><div>Value<b>' + (x.value ? money(x.value, 0) : '<span class="pill warn">Needs Value</span>') + '</b></div><div>Equity<b>' + sMoney(x.equity, 0) + '</b></div>' +
+        '<div>Cash Flow / Mo<b>' + (x.hasIncome ? sMoney(x.monthlyCashFlow, 0) : '<span class="pill warn">Needs Data</span>') + '</b></div><div>Cash In<b>' + money(x.cashInvested, 0) + '</b></div><div>Loan Balance<b>' + money(x.loanBalance, 0) + '</b></div><div>Purchased<b>' + (fmtDate(f.purchaseDate) || '<span class="pill warn">Needs Date</span>') + '</b></div></div>' +
+        donut(x.totalRoi || 0, 1, pct(x.totalRoi, 0), 'Total Return', x.totalRoi == null ? 'gold' : (x.totalRoi >= 0 ? 'good' : 'bad'), 96) + '</div></div>';
+    }).join('') + '</div>';
+  }
+  function viewHoldings() {
+    loading();
+    loadFlips(true).then(function (all) {
+      var list = all.filter(isHolding), open = list.filter(function (f) { return f.status !== 'Sold'; }), sold = list.filter(function (f) { return f.status === 'Sold'; });
+      var html = '<div class="spread"><div><h1>Holdings</h1><p class="lead">Properties LANA HOMES keeps: value, equity, cash flow and return.</p></div>' + (isOwner() ? '<button class="btn gold" id="nh">New Holding</button>' : '') + '</div>';
+      html += holdingCards(open) + (sold.length ? '<div class="label">Sold Holdings</div>' + holdingCards(sold) : '');
+      $app.innerHTML = html; bindCards(); animate();
+      var nh = document.getElementById('nh'); if (nh) nh.onclick = function () { editFlip(null, 'holding'); };
+    }).catch(fail);
+  }
+  function accessBlock(f, noun) {
+    if (!f.access) return '';
+    var own = isOwner();
+    return '<div class="label">Who Can See This ' + noun + '</div><div class="card tblwrap"><table class="t"><thead><tr><th>User</th><th>Role</th><th>Invited</th><th>Last Sign-In</th><th></th></tr></thead><tbody>' +
+      (f.access.length ? f.access.map(function (a) {
+        return '<tr><td><b>' + esc(a.name || a.email) + '</b><div class="meta">' + esc(a.email) + '</div></td><td>' + (own ? '<div class="seg" data-u="' + esc(a.userId) + '"><button data-r="member" class="' + (a.role === 'member' ? 'on' : '') + '">Member</button><button data-r="admin" class="' + (a.role === 'admin' ? 'on' : '') + '">Admin</button></div>' : '<span class="pill' + (a.role === 'admin' ? ' admin' : '') + '">' + (a.role === 'admin' ? 'Admin' : 'Member') + '</span>') + '</td>' +
+          '<td class="meta">' + (a.invitedAt ? new Date(a.invitedAt).toLocaleDateString() : 'Not emailed') + '</td><td class="meta">' + (a.lastLogin ? new Date(a.lastLogin).toLocaleDateString() : 'Never') + '</td>' +
+          '<td class="r"><div class="row" style="justify-content:flex-end"><button class="btn sm" data-resend="' + esc(a.userId) + '">Resend Invite</button>' + (own || a.role !== 'admin' ? '<button class="btn sm danger" data-rm="' + esc(a.userId) + '">Remove</button>' : '') + '</div></td></tr>';
+      }).join('') : '<tr><td colspan="5" class="empty">Only you. Use Invite User to add someone.</td></tr>') + '</tbody></table></div>';
+  }
+  function bindAccess(f) {
+    document.querySelectorAll('.seg[data-u]').forEach(function (sg) { sg.querySelectorAll('button').forEach(function (b) { b.onclick = function () { api('setAccessRole', { flipId: f.id, userId: sg.dataset.u, role: b.dataset.r }).then(function () { toast('Role updated.'); viewFlip(f.id); }).catch(fail); }; }); });
+    document.querySelectorAll('[data-rm]').forEach(function (b) { b.onclick = function () { confirmBox('Remove Access', '<p>This user will no longer see ' + esc(f.address) + '.</p>', 'Remove', function () { api('removeAccess', { flipId: f.id, userId: b.dataset.rm }).then(function () { toast('Access removed.'); viewFlip(f.id); }).catch(fail); }); }; });
+    document.querySelectorAll('[data-resend]').forEach(function (b) { b.onclick = function () { b.disabled = true; api('resendInvite', { flipId: f.id, userId: b.dataset.resend }).then(function () { toast('Invite emailed.'); }).catch(fail).then(function () { b.disabled = false; }); }; });
+  }
+  function renderHolding(f) {
+    markTab('#/holdings');
+    var x = C.holding(f), can = f.canManage;
+    var ln = function (k, v, cls) { return '<div class="ln' + (cls ? ' ' + cls : '') + '"><span>' + k + '</span><span class="num">' + v + '</span></div>'; };
+    var html = '<p class="meta"><a href="#/holdings">← Holdings</a></p><div class="spread"><div><h1>' + esc(f.address) + '</h1><p class="lead">' + esc(f.city) + (f.partners ? ' · ' + esc(f.partners) : '') + '</p></div><div class="row">' +
+      (can ? '<select id="st" class="btn" aria-label="Status">' + HSTATUSES.map(function (s) { return '<option' + (s === f.status ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select>' : '<span class="pill">' + esc(f.status) + '</span>') +
+      (can ? '<button class="btn" id="ed">Edit Numbers</button><button class="btn gold" id="inv">Invite User</button>' : '') + '</div></div>';
+    if (f.datesNote) html += '<p class="note' + (/Needs Date/.test(f.datesNote) ? ' bad' : '') + '">' + esc(f.datesNote) + '</p>';
+    html += '<div class="grid g4" style="margin-top:18px">' +
+      kpi('Equity', sMoney(x.equity, 0), (x.value ? money(x.value, 0) + ' value' : 'Needs value') + ' − ' + money(x.loanBalance, 0) + ' loan', x.equity < 0 ? 'bad' : 'good') +
+      kpi('Monthly Cash Flow', x.hasIncome ? sMoney(x.monthlyCashFlow, 0) : '<span class="pill warn">Needs Data</span>', x.hasIncome ? sMoney(x.annualCashFlow, 0) + ' a year' : 'Add rent and monthly expenses') +
+      kpi('Cash-On-Cash', x.hasIncome ? sPct(x.cashOnCash) : '—', 'Annual cash flow ÷ cash in') +
+      kpi('Total Return', sPct(x.totalRoi), '(Equity − cash in + cash flow to date) ÷ cash in') + '</div>';
+    html += '<div class="grid g2" style="margin-top:22px"><div class="card rule"><h2>The Numbers</h2><p class="meta">Purchase, financing and what it earns</p><div class="lines">' +
+      ln('Purchase Price', money(f.purchasePrice)) + ln('Closing Costs', money(f.buyClosingCosts)) + ln('Improvements Spent', money(f.rehabSpent)) + ln('All-In Cost', money(x.allIn), 'tot') +
+      ln('Original Loan' + (f.lender ? ' · ' + esc(f.lender) : ''), money(f.loanAmount)) + ln('Current Loan Balance', money(x.loanBalance)) + ln('Cash Invested', money(x.cashInvested), 'tot') +
+      ln('Current Value', x.value ? money(x.value) : '<span class="pill warn">Needs Value</span>') + ln('Equity', sMoney(x.equity), 'tot') +
+      ln('Monthly Income', money(f.monthlyIncome)) + ln('Monthly Expenses', money(f.monthlyExpenses)) + ln('Monthly Cash Flow', sMoney(x.monthlyCashFlow), 'tot') + '</div></div>' +
+      '<div class="card rule"><h2>Return</h2><p class="meta">Equity gain plus cash flow on the cash you put in</p><div style="display:flex;justify-content:center;gap:18px;margin-top:10px">' +
+      donut(x.equityRoi || 0, 1, pct(x.equityRoi, 0), 'Equity Gain', x.equityRoi == null ? 'gold' : (x.equityRoi >= 0 ? 'good' : 'bad')) + donut(x.cashOnCash || 0, 0.2, x.hasIncome ? pct(x.cashOnCash, 1) : '—', 'Cash-On-Cash', 'gold') + '</div>' +
+      '<hr class="sep"><div class="mini"><div>Purchased<b>' + (fmtDate(f.purchaseDate) || '<span class="pill warn">Needs Date</span>') + '</b></div><div>Months Held<b>' + (x.monthsHeld == null ? '—' : x.monthsHeld) + '</b></div><div>Value Vs All-In<b>' + sMoney(x.value ? x.value - x.allIn : 0, 0) + '</b></div></div></div></div>';
+    if (f.notes) html += '<div class="label">How These Numbers Were Built</div><div class="card"><p style="margin:0;white-space:pre-wrap" class="sub2">' + esc(f.notes) + '</p></div>';
+    html += '<div class="label">Inventory Needs List</div><div id="invlist"></div>' + accessBlock(f, 'Holding');
+    if (f.estimates && f.estimates.length) html += '<div class="label">Estimates Tied To This Holding</div>' + estTable(f.estimates);
+    $app.innerHTML = html; animate();
+    renderInventory('flip', f.id, f.inventory || [], can);
+    var st = document.getElementById('st');
+    if (st) st.onchange = function () { api('setStatus', { id: f.id, status: st.value }).then(function () { toast('Status set to ' + st.value + '.'); S.flips = null; viewFlip(f.id); }).catch(function (e) { fail(e); st.value = f.status; }); };
+    var ed = document.getElementById('ed'); if (ed) ed.onclick = function () { editFlip(f); };
+    var inv = document.getElementById('inv'); if (inv) inv.onclick = function () { inviteModal(f); };
+    bindAccess(f); if (typeof bindEstRows === 'function') bindEstRows();
+  }
+
+  /* ---------- LANA HOMES Expenses (owner only) ---------- */
+  var EX = { items: [], cats: [], f: { link: '', cat: '', from: '', to: '', q: '' } };
+  function exLinkLabel(e) { return e.linkType === 'general' || !e.linkId ? 'General LLC' : (e.linkName || e.linkId); }
+  function exFiltered() {
+    var f = EX.f, q = f.q.toLowerCase();
+    return EX.items.filter(function (e) {
+      if (f.link === 'general' && !(e.linkType === 'general' || !e.linkId)) return false;
+      if (f.link && f.link !== 'general' && e.linkId !== f.link) return false;
+      if (f.cat && e.category !== f.cat) return false;
+      if (f.from && (!e.date || e.date < f.from)) return false;
+      if (f.to && (!e.date || e.date > f.to)) return false;
+      if (q && (e.payee + ' ' + e.notes + ' ' + e.method).toLowerCase().indexOf(q) < 0) return false;
+      return true;
+    }).sort(function (a, b) { return (b.date || '0') < (a.date || '0') ? -1 : 1; });
+  }
+  function viewExpenses() {
+    loading();
+    Promise.all([api('listExpenses'), loadFlips(true)]).then(function (res) { EX.items = res[0].items; EX.cats = res[0].categories; EX.props = res[1]; drawExpenses(); }).catch(fail);
+  }
+  function drawExpenses() {
+    var rows = exFiltered(), f = EX.f;
+    var total = rows.reduce(function (s, e) { return s + e.amount; }, 0);
+    var byCat = {}; rows.forEach(function (e) { byCat[e.category || 'Other'] = (byCat[e.category || 'Other'] || 0) + e.amount; });
+    var byLink = {}; rows.forEach(function (e) { var k = exLinkLabel(e); byLink[k] = (byLink[k] || 0) + e.amount; });
+    var need = rows.filter(function (e) { return /Needs (Date|Amount)/.test(e.notes); }).length;
+    var opt = function (v, l, cur) { return '<option value="' + esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(l) + '</option>'; };
+    var html = '<div class="spread"><div><h1>LANA HOMES Expenses</h1><p class="lead">Every LLC expense, tied to a flip, a holding or General LLC. Only you can see this.</p></div><div class="row"><button class="btn" id="csv">Export CSV</button><button class="btn gold" id="nx">Add Expense</button></div></div>';
+    html += '<div class="card"><div class="calcgrid">' +
+      '<div class="field"><label>Property</label><select id="xl">' + opt('', 'All', f.link) + opt('general', 'General LLC', f.link) + EX.props.map(function (p) { return opt(p.id, (isHolding(p) ? 'Holding · ' : 'Flip · ') + p.address, f.link); }).join('') + '</select></div>' +
+      '<div class="field"><label>Category</label><select id="xc">' + opt('', 'All', f.cat) + EX.cats.map(function (c) { return opt(c, c, f.cat); }).join('') + '</select></div>' +
+      '<div class="field"><label>From</label><input type="date" id="xf" value="' + esc(f.from) + '"></div><div class="field"><label>To</label><input type="date" id="xt" value="' + esc(f.to) + '"></div>' +
+      '<div class="field"><label>Search</label><input id="xq" value="' + esc(f.q) + '" placeholder="Payee, notes, method"></div></div></div>';
+    html += '<div class="grid g4" style="margin-top:22px">' + kpi('Total', money(total), rows.length + ' entr' + (rows.length === 1 ? 'y' : 'ies')) +
+      kpi('General LLC', money(byLink['General LLC'] || 0), 'Not tied to a property') + kpi('Tied To Properties', money(total - (byLink['General LLC'] || 0)), 'Flips and holdings') +
+      kpi('Needs Info', String(need), 'Missing a date or amount', need ? 'bad' : '') + '</div>';
+    html += '<div class="grid g2" style="margin-top:22px"><div class="card"><h2>By Category</h2><div class="lines">' + Object.keys(byCat).sort(function (a, b) { return byCat[b] - byCat[a]; }).map(function (k) { return '<div class="ln"><span>' + esc(k) + '</span><span class="num">' + money(byCat[k]) + '</span></div>'; }).join('') + '</div></div>' +
+      '<div class="card"><h2>By Property</h2><div class="lines">' + Object.keys(byLink).sort(function (a, b) { return byLink[b] - byLink[a]; }).map(function (k) { return '<div class="ln"><span>' + esc(k) + '</span><span class="num">' + money(byLink[k]) + '</span></div>'; }).join('') + '</div></div></div>';
+    html += '<div class="label">Entries</div><div class="card tblwrap"><table class="t"><thead><tr><th>Date</th><th>Payee</th><th>Category</th><th>Property</th><th>Method</th><th class="r">Amount</th><th>Receipt</th><th></th></tr></thead><tbody>' +
+      (rows.length ? rows.map(function (e) {
+        return '<tr><td>' + (fmtDate(e.date) || '<span class="pill warn">Needs Date</span>') + '</td><td><b>' + esc(e.payee) + '</b>' + (e.notes ? '<div class="meta">' + esc(e.notes) + '</div>' : '') + '</td><td>' + esc(e.category) + '</td><td>' + esc(exLinkLabel(e)) + '</td><td class="meta">' + esc(e.method) + '</td>' +
+          '<td class="r num">' + money(e.amount) + '</td><td>' + (e.receiptUrl ? '<a href="' + esc(e.receiptUrl) + '" target="_blank" rel="noopener">View</a>' : '<span class="meta">—</span>') + '</td>' +
+          '<td class="r"><button class="btn sm" data-xe="' + esc(e.id) + '">Edit</button> <button class="btn sm danger" data-xd="' + esc(e.id) + '">Delete</button></td></tr>';
+      }).join('') : '<tr><td colspan="8" class="empty">No expenses match.</td></tr>') + '</tbody></table></div>';
+    $app.innerHTML = html;
+    var bindF = function (id, k) { var el = document.getElementById(id); el.onchange = function () { EX.f[k] = el.value; drawExpenses(); }; };
+    bindF('xl', 'link'); bindF('xc', 'cat'); bindF('xf', 'from'); bindF('xt', 'to');
+    var xq = document.getElementById('xq'); xq.onchange = function () { EX.f.q = xq.value; drawExpenses(); };
+    document.getElementById('nx').onclick = function () { editExpense(null); };
+    document.getElementById('csv').onclick = function () { exportCsv(rows); };
+    document.querySelectorAll('[data-xe]').forEach(function (b) { b.onclick = function () { editExpense(EX.items.filter(function (e) { return e.id === b.dataset.xe; })[0]); }; });
+    document.querySelectorAll('[data-xd]').forEach(function (b) { b.onclick = function () { confirmBox('Delete Expense', '<p>Remove this entry from the ledger? Its receipt stays in Drive.</p>', 'Delete', function () { api('deleteExpense', { id: b.dataset.xd }).then(function () { toast('Deleted.'); viewExpenses(); }).catch(fail); }); }; });
+  }
+  function csvCell(v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+  function exportCsv(rows) {
+    var head = ['Date', 'Payee', 'Category', 'Amount', 'Method', 'Property', 'Notes', 'Receipt'];
+    var lines = [head.join(',')].concat(rows.map(function (e) { return [e.date, e.payee, e.category, e.amount.toFixed(2), e.method, exLinkLabel(e), e.notes, e.receiptUrl].map(csvCell).join(','); }));
+    var blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'LANA HOMES Expenses ' + todayISO() + '.csv'; document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  }
+  function readB64(file) { return new Promise(function (ok, no) { var r = new FileReader(); r.onload = function () { ok(String(r.result).split(',')[1] || ''); }; r.onerror = no; r.readAsDataURL(file); }); }
+  function editExpense(e) {
+    var isNew = !e; e = e || { date: todayISO(), linkType: 'general', linkId: '', category: '', amount: '', method: 'LLC Card' };
+    var cur = e.linkType === 'general' || !e.linkId ? 'general' : e.linkId;
+    modal('<h2>' + (isNew ? 'Add Expense' : 'Edit Expense') + '</h2><div class="calcgrid">' +
+      '<div class="field"><label>Date</label><input type="date" id="ed1" value="' + esc(e.date) + '"></div><div class="field"><label>Payee</label><input id="ed2" value="' + esc(e.payee || '') + '"></div>' +
+      '<div class="field"><label>Category</label><select id="ed3">' + EX.cats.map(function (c) { return '<option' + (c === e.category ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('') + '</select></div>' +
+      '<div class="field"><label>Amount (Negative For A Refund)</label><input id="ed4" inputmode="decimal" value="' + esc(e.amount) + '"></div>' +
+      '<div class="field"><label>Method</label><input id="ed5" value="' + esc(e.method || '') + '" placeholder="LLC Card, Zelle, Check"></div>' +
+      '<div class="field"><label>Property</label><select id="ed6"><option value="general">General LLC</option>' + EX.props.map(function (p) { return '<option value="' + esc(p.id) + '"' + (p.id === cur ? ' selected' : '') + '>' + (isHolding(p) ? 'Holding · ' : 'Flip · ') + esc(p.address) + '</option>'; }).join('') + '</select></div></div>' +
+      '<div class="field"><label>Notes</label><textarea id="ed7" rows="2">' + esc(e.notes || '') + '</textarea></div>' +
+      '<div class="field"><label>Receipt (PDF Or Photo, Under 10 MB)' + (e.receiptUrl ? ' · <a href="' + esc(e.receiptUrl) + '" target="_blank" rel="noopener">Current</a>' : '') + '</label><input type="file" id="ed8" accept="application/pdf,image/jpeg,image/png,image/heic,image/webp"></div>' +
+      '<div class="row"><button class="btn gold" id="ok">Save</button><button class="btn" id="cx">Cancel</button></div>', function () {
+      document.getElementById('cx').onclick = closeModal;
+      document.getElementById('ok').onclick = function () {
+        var b = this; b.disabled = true;
+        var link = document.getElementById('ed6').value;
+        var body = { id: e.id || '', date: document.getElementById('ed1').value, payee: document.getElementById('ed2').value, category: document.getElementById('ed3').value,
+          amount: C.n(document.getElementById('ed4').value), method: document.getElementById('ed5').value, notes: document.getElementById('ed7').value,
+          linkType: link === 'general' ? 'general' : 'flip', linkId: link === 'general' ? '' : link };
+        var file = document.getElementById('ed8').files[0];
+        var up = file ? (file.size > 10 * 1024 * 1024 ? Promise.reject(new Error('Receipts must be under 10 MB.')) : readB64(file).then(function (d) { return api('uploadReceipt', { name: file.name, mime: file.type, data: d }); })) : Promise.resolve(null);
+        up.then(function (r) { if (r) { body.receiptId = r.receiptId; body.receiptName = r.receiptName; } return api('saveExpense', { expense: body }); })
+          .then(function () { closeModal(); toast('Saved.'); viewExpenses(); }).catch(fail).then(function () { b.disabled = false; });
+      };
+    });
+  }
+
   /* ---------- admin ---------- */
   function viewAdmin() {
     loading();
     Promise.all([api('listUsers'), loadFlips(true)]).then(function (res) {
       var users = res[0], flips = res[1];
-      var html = '<div class="spread"><div><h1>Admin</h1><p class="lead">Invite people to specific flips. They only see the flips they’re invited to. Only you can grant Admin on a flip.</p></div><div class="row"><button class="btn gold" id="nf">New Flip</button><a class="btn" href="#/estimates">All Estimates</a></div></div>';
+      var html = '<div class="spread"><div><h1>Admin</h1><p class="lead">Invite people to specific flips and holdings. They only see what they’re invited to. Only you can grant Admin on a property.</p></div><div class="row"><button class="btn gold" id="nf">New Flip</button><button class="btn" id="nh">New Holding</button><a class="btn" href="#/estimates">All Estimates</a></div></div>';
       html += '<div class="label">Invite Someone</div><div class="card rule"><div class="calcgrid"><div class="field"><label>Email</label><input id="aem" type="email"></div><div class="field"><label>Name (Optional)</label><input id="anm"></div>' +
-        '<div class="field"><label>Flip</label><select id="afl">' + flips.map(function (f) { return '<option value="' + esc(f.id) + '">' + esc(f.address) + ' · ' + esc(f.status) + '</option>'; }).join('') + '</select></div>' +
-        '<div class="field"><label>Role</label><select id="arl"><option value="member">Member — View Only</option><option value="admin">Admin On This Flip</option></select></div></div><button class="btn gold" id="ainv">Send Invite</button></div>';
-      html += '<div class="label">Users</div><div class="card tblwrap"><table class="t"><thead><tr><th>User</th><th>Flips</th><th class="r">Estimates</th><th>Last Sign-In</th><th></th></tr></thead><tbody>' +
+        '<div class="field"><label>Flip Or Holding</label><select id="afl">' + flips.map(function (f) { return '<option value="' + esc(f.id) + '">' + (isHolding(f) ? 'Holding · ' : 'Flip · ') + esc(f.address) + ' · ' + esc(f.status) + '</option>'; }).join('') + '</select></div>' +
+        '<div class="field"><label>Role</label><select id="arl"><option value="member">Member — View Only</option><option value="admin">Admin On This Property</option></select></div></div><button class="btn gold" id="ainv">Send Invite</button></div>';
+      html += '<div class="label">Users</div><div class="card tblwrap"><table class="t"><thead><tr><th>User</th><th>Flips &amp; Holdings</th><th class="r">Estimates</th><th>Last Sign-In</th><th></th></tr></thead><tbody>' +
         users.map(function (u) {
           return '<tr><td><b>' + esc(u.name || u.email) + '</b>' + (u.role === 'owner' ? ' <span class="pill admin">Owner</span>' : '') + (u.active ? '' : ' <span class="pill warn">Off</span>') + '<div class="meta">' + esc(u.email) + '</div></td>' +
-            '<td>' + (u.role === 'owner' ? '<span class="meta">All flips</span>' : (u.flips.length ? u.flips.map(function (f) { return '<a class="pill' + (f.role === 'admin' ? ' admin' : '') + '" style="margin:2px;text-decoration:none" href="#/flip/' + esc(f.flipId) + '">' + esc(f.address) + (f.role === 'admin' ? ' · Admin' : '') + '</a>'; }).join('') : '<span class="meta">None</span>')) + '</td>' +
+            '<td>' + (u.role === 'owner' ? '<span class="meta">All flips and holdings</span>' : (u.flips.length ? u.flips.map(function (f) { return '<a class="pill' + (f.role === 'admin' ? ' admin' : '') + '" style="margin:2px;text-decoration:none" href="#/flip/' + esc(f.flipId) + '">' + esc(f.address) + (f.role === 'admin' ? ' · Admin' : '') + '</a>'; }).join('') : '<span class="meta">None</span>')) + '</td>' +
             '<td class="r num">' + u.estimates + '</td><td class="meta">' + (u.lastLogin ? new Date(u.lastLogin).toLocaleString() : 'Never') + '</td>' +
             '<td class="r">' + (u.role === 'owner' ? '' : '<button class="btn sm' + (u.active ? ' danger' : '') + '" data-act="' + esc(u.id) + '" data-on="' + (u.active ? '0' : '1') + '">' + (u.active ? 'Turn Off' : 'Turn On') + '</button>') + '</td></tr>';
         }).join('') + '</tbody></table></div>';
       $app.innerHTML = html;
       document.getElementById('nf').onclick = function () { editFlip(null); };
+      document.getElementById('nh').onclick = function () { editFlip(null, 'holding'); };
       document.getElementById('ainv').onclick = function () {
         var b = this; b.disabled = true;
         api('inviteUser', { flipId: document.getElementById('afl').value, email: document.getElementById('aem').value, name: document.getElementById('anm').value, role: document.getElementById('arl').value })
