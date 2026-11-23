@@ -270,3 +270,4 @@ input.code::placeholder{color:#D9D9DE;letter-spacing:.42em}
 .auth-trust svg{width:14px;height:14px;fill:none;stroke:var(--gold2);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 @media(max-width:900px){.auth-trust{margin-top:20px}}
 .menu button svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;opacity:.8}
+.menu .mh span.pill.admin{color:#fff}.menu .mh span.pill{font-size:11px;color:var(--char)}.menu .mh span.pill.admin{color:#fff}
