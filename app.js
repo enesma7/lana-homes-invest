@@ -124,12 +124,33 @@
   }
   function renderLogin() {
     var qs = new URLSearchParams(location.search), pre = qs.get('email') || localStorage.getItem('fl_last_email') || '';
-    $app.innerHTML = '<div class="login"><div class="card rule"><h1>Sign In</h1><p class="lead">Enter your email and we’ll send you a one-time code.</p>' +
-      (CFG.API_URL ? '' : '<p class="note bad">The Investments service is not connected yet.</p>') +
-      '<form id="f1"><div class="field"><label for="em">Email</label><input id="em" type="email" autocomplete="email" required value="' + esc(pre) + '"></div>' +
-      '<button class="btn gold" type="submit">Email Me A Code</button></form>' +
-      '<form id="f2" hidden><p class="sub2" id="sentto"></p><div class="field"><label for="cd">6-Digit Code</label><input id="cd" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></div>' +
-      '<label class="check"><input type="checkbox" id="trust" checked> Trust This Device For 30 Days</label><div class="row" style="margin-top:14px"><button class="btn gold" type="submit">Sign In</button><button class="btn" type="button" id="back">Use A Different Email</button></div></form></div></div>';
+    document.body.classList.add('auth');
+    var mark = '<span class="mk" aria-hidden="true">LH</span>';
+    $app.innerHTML = '<div class="auth-split">' +
+      '<section class="auth-brand" aria-hidden="true"><div class="ab-grid"></div><div class="ab-glow"></div>' +
+        '<svg class="ab-rings" viewBox="0 0 400 400"><defs><linearGradient id="abg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#EAD59E"/><stop offset="1" stop-color="#D5BE87"/></linearGradient></defs>' +
+        '<circle cx="200" cy="200" r="170" fill="none" stroke="rgba(234,213,158,.10)" stroke-width="1"/><circle cx="200" cy="200" r="130" fill="none" stroke="rgba(234,213,158,.14)" stroke-width="1"/>' +
+        '<circle class="ab-arc a1" cx="200" cy="200" r="170" fill="none" stroke="url(#abg)" stroke-width="3" stroke-linecap="round" stroke-dasharray="300 769"/>' +
+        '<circle class="ab-arc a2" cx="200" cy="200" r="130" fill="none" stroke="url(#abg)" stroke-width="3" stroke-linecap="round" stroke-dasharray="150 667"/>' +
+        '<circle cx="200" cy="200" r="90" fill="none" stroke="rgba(234,213,158,.18)" stroke-width="1" stroke-dasharray="2 6"/></svg>' +
+        '<div class="ab-top"><div class="brand light">' + mark + '<span class="tx"><span class="wm">LANA HOMES</span><span class="sub">INVESTMENTS</span></span></div></div>' +
+        '<div class="ab-copy"><div class="ab-kicker">Private Investor Portal</div><h2>Every flip and holding,<br><span class="goldtxt">down to the dollar.</span></h2>' +
+        '<p>Live returns, cash in, rehab spend and investor payouts, in one secure place.</p>' +
+        '<div class="ab-stats"><div><b>Flips</b><span>Status To Sale</span></div><div><b>Holdings</b><span>Cash Flow &amp; NOI</span></div><div><b>Secure</b><span>Email Code Sign-In</span></div></div></div>' +
+        '<div class="ab-foot">© LANA HOMES LLC</div></section>' +
+      '<section class="auth-main"><div class="auth-mobile-brand">' + mark + '<span class="tx"><span class="wm">LANA HOMES</span><span class="sub">INVESTMENTS</span></span></div>' +
+        '<div class="auth-card"><div class="steps"><span class="on" id="s1">1 · Email</span><i></i><span id="s2">2 · Code</span></div>' +
+        (CFG.API_URL ? '' : '<p class="note bad">The Investments service is not connected yet.</p>') +
+        '<form id="f1"><h1>Welcome back</h1><p class="lead">Enter your email and we’ll send you a one-time sign-in code.</p>' +
+          '<div class="field ic"><label for="em">Email</label><div class="inwrap"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg><input id="em" type="email" autocomplete="email" placeholder="you@example.com" required value="' + esc(pre) + '"></div></div>' +
+          '<button class="btn gold block" type="submit">Email Me A Code <span aria-hidden="true">→</span></button>' +
+          '<p class="fine">Trusted devices sign in without a code for 30 days.</p></form>' +
+        '<form id="f2" hidden><h1>Check your email</h1><p class="lead" id="sentto"></p>' +
+          '<div class="field"><label for="cd">6-Digit Code</label><input id="cd" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="••••••" required></div>' +
+          '<label class="check sw"><input type="checkbox" id="trust" checked><span class="swi" aria-hidden="true"></span> Trust This Device For 30 Days</label>' +
+          '<button class="btn gold block" type="submit" style="margin-top:16px">Sign In <span aria-hidden="true">→</span></button>' +
+          '<button class="btn ghost block" type="button" id="back">Use A Different Email</button></form>' +
+        '</div><div class="auth-trust"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>One-time email codes · No passwords stored</div><div class="auth-mfoot">© LANA HOMES LLC</div></section></div>';
     var f1 = document.getElementById('f1'), f2 = document.getElementById('f2'), em = document.getElementById('em');
     f1.onsubmit = function (ev) {
       ev.preventDefault(); var email = em.value.trim().toLowerCase(); var b = f1.querySelector('button'); b.disabled = true;
@@ -139,11 +160,13 @@
         if (done) return;
         return api('requestCode', { email: email }).then(function (d) {
           f1.hidden = true; f2.hidden = false; f2.dataset.email = email;
+          document.getElementById('s1').className = 'done'; document.getElementById('s2').className = 'on';
           document.getElementById('sentto').textContent = d.message + ' (' + email + ')'; document.getElementById('cd').focus();
         });
       }).catch(fail).then(function () { b.disabled = false; });
     };
-    document.getElementById('back').onclick = function () { f2.hidden = true; f1.hidden = false; };
+    document.getElementById('back').onclick = function () { f2.hidden = true; f1.hidden = false; document.getElementById('s1').className = 'on'; document.getElementById('s2').className = ''; em.focus(); };
+    var cdi = document.getElementById('cd'); cdi.oninput = function () { cdi.value = cdi.value.replace(/\D/g, '').slice(0, 6); };
     f2.onsubmit = function (ev) {
       ev.preventDefault(); var b = f2.querySelector('button[type=submit]'); b.disabled = true;
       api('verifyCode', { email: f2.dataset.email, code: document.getElementById('cd').value, trust: document.getElementById('trust').checked })
@@ -169,6 +192,7 @@
   function renderChrome() {
     var tabs = document.getElementById('tabs'), who = document.getElementById('who');
     var mb = document.getElementById('modebar');
+    document.body.classList.toggle('auth', !S.user);
     if (!S.user) { tabs.hidden = true; who.innerHTML = ''; mb.hidden = true; mb.innerHTML = ''; return; }
     var hm = mode() === 'holdings', items;
     if (hm) items = [['#/', 'Dashboard'], ['#/holdings', 'Holdings'], ['#/expenses', 'Expenses'], ['#/resources', 'Resources']];
