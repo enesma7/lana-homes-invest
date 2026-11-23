@@ -24,6 +24,10 @@
   function todayISO() { var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
   function toast(msg, err) { var t = document.getElementById('toast'); t.textContent = msg; t.className = 'toast' + (err ? ' err' : ''); t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(function () { t.hidden = true; }, 3800); }
   function isOwner() { return S.user && S.user.role === 'owner'; }
+  // Flips | Holdings mode. Only the owner (super-admin) ever gets Holdings; everyone else is always in Flips.
+  function mode() { return isOwner() && localStorage.getItem('lh_mode') === 'holdings' ? 'holdings' : 'flips'; }
+  function setMode(m) { if (!isOwner()) return; var was = mode(); localStorage.setItem('lh_mode', m === 'holdings' ? 'holdings' : 'flips'); if (was !== mode()) renderChrome(); }
+  function inMode(f) { return mode() === 'holdings' ? isHolding(f) : !isHolding(f); }
   function firstName(s) { return String(s || '').trim().split(/\s+/)[0].toLowerCase(); }
   function devKey(email) { return 'fl_dev_' + String(email || '').toLowerCase(); }
 
@@ -68,7 +72,43 @@
     return '<div class="donut"><svg width="' + size + '" height="' + size + '" viewBox="0 0 ' + size + ' ' + size + '"><circle cx="' + size / 2 + '" cy="' + size / 2 + '" r="' + r + '" fill="none" stroke="#EEEEF0" stroke-width="' + sw + '"/>' + segs +
       '<text x="50%" y="50%" text-anchor="middle" dominant-baseline="central" font-family="Inter,Helvetica,Arial,sans-serif" font-weight="700" font-size="20" fill="#000007">' + esc(center) + '</text></svg><div class="dl">' + esc(label) + '</div></div>';
   }
-  function animate() { requestAnimationFrame(function () { requestAnimationFrame(function () { document.querySelectorAll('circle.arc').forEach(function (a) { a.style.strokeDashoffset = a.getAttribute('data-off'); }); }); }); }
+  function animate() { requestAnimationFrame(function () { requestAnimationFrame(function () {
+    document.querySelectorAll('circle.arc').forEach(function (a) { a.style.strokeDashoffset = a.getAttribute('data-off'); });
+    document.querySelectorAll('.hbar .tr i[data-w]').forEach(function (i) { i.style.width = i.getAttribute('data-w'); });
+    document.querySelectorAll('.vbars').forEach(function (v) { v.classList.add('on'); });
+  }); }); }
+  // Horizontal bars: [{label, value, display, tone}] scaled to the largest |value|.
+  function hbars(items) {
+    var mx = items.reduce(function (m, i) { return Math.max(m, Math.abs(i.value || 0)); }, 0) || 1;
+    return '<div class="hbars">' + items.map(function (i) {
+      return '<div class="hbar"><div class="hl"><span>' + esc(i.label) + '</span><span class="num"><b>' + i.display + '</b></span></div><div class="tr"><i class="' + (i.tone || '') + '" data-w="' + (Math.abs(i.value || 0) / mx * 100).toFixed(1) + '%"></i></div></div>';
+    }).join('') + '</div>';
+  }
+  // Grouped vertical bars: groups [{label, a, b}] with series names/colors.
+  function vbars(groups, sa, sb) {
+    var W = 560, H = 220, P = { l: 46, r: 8, t: 12, b: 30 }, iw = W - P.l - P.r, ih = H - P.t - P.b;
+    var vals = []; groups.forEach(function (g) { vals.push(g.a, g.b); });
+    var mx = Math.max.apply(null, vals.concat([1])), mn = Math.min.apply(null, vals.concat([0]));
+    var span = mx - mn || 1, y = function (v) { return P.t + ih * (mx - v) / span; }, y0 = y(0);
+    var gw = iw / Math.max(1, groups.length), bw = Math.min(30, gw * 0.28);
+    var ticks = '', k; for (k = 0; k <= 4; k++) { var tv = mn + span * k / 4, ty = y(tv); ticks += '<line x1="' + P.l + '" x2="' + (W - P.r) + '" y1="' + ty.toFixed(1) + '" y2="' + ty.toFixed(1) + '" stroke="#EEEEF0" stroke-dasharray="3 4"/><text x="' + (P.l - 8) + '" y="' + (ty + 3.5).toFixed(1) + '" text-anchor="end">' + (Math.abs(tv) >= 1000 ? (tv < 0 ? '−' : '') + '$' + Math.round(Math.abs(tv) / 1000) + 'K' : '$' + Math.round(tv)) + '</text>'; }
+    var bars = groups.map(function (g, i) {
+      var cx = P.l + gw * i + gw / 2, out = '';
+      [[g.a, sa, -1], [g.b, sb, 1]].forEach(function (s) {
+        var v = s[0], top = Math.min(y(v), y0), h = Math.max(2, Math.abs(y(v) - y0)), x = cx + (s[2] < 0 ? -bw - 3 : 3);
+        var fill = s[1].neg && v < 0 ? 'url(#vbR)' : 'url(#' + s[1].id + ')';
+        out += '<rect class="bar-r" x="' + x.toFixed(1) + '" y="' + top.toFixed(1) + '" width="' + bw.toFixed(1) + '" height="' + h.toFixed(1) + '" rx="5" fill="' + fill + '"><title>' + esc(g.label + ' · ' + s[1].name + ': ' + money(v, 0)) + '</title></rect>';
+      });
+      return out + '<text x="' + cx.toFixed(1) + '" y="' + (H - 10) + '" text-anchor="middle">' + esc(g.label.length > 16 ? g.label.slice(0, 15) + '…' : g.label) + '</text>';
+    }).join('');
+    return '<div class="vbars"><svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(sa.name + ' and ' + sb.name) + '"><defs>' +
+      '<linearGradient id="vbG" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#EAD59E"/><stop offset="1" stop-color="#D5BE87"/></linearGradient>' +
+      '<linearGradient id="vbI" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3A3A3F"/><stop offset="1" stop-color="#000007"/></linearGradient>' +
+      '<linearGradient id="vbE" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1FA855"/><stop offset="1" stop-color="#0B6B34"/></linearGradient>' +
+      '<linearGradient id="vbR" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#EF0207"/><stop offset="1" stop-color="#9A0007"/></linearGradient></defs>' +
+      ticks + '<line x1="' + P.l + '" x2="' + (W - P.r) + '" y1="' + y0.toFixed(1) + '" y2="' + y0.toFixed(1) + '" stroke="#D5D5DA"/>' + bars + '</svg>' +
+      '<div class="keys"><span><i style="background:' + sa.key + '"></i>' + esc(sa.name) + '</span><span><i style="background:' + sb.key + '"></i>' + esc(sb.name) + '</span></div></div>';
+  }
   var PALETTE = ['#D5BE87', '#000007', '#0B6B34', '#6B6B70', '#EAD59E', '#9A0007', '#3A3A3F', '#1FA855'];
 
   /* ---------- auth ---------- */
@@ -128,19 +168,45 @@
   /* ---------- chrome / routing ---------- */
   function renderChrome() {
     var tabs = document.getElementById('tabs'), who = document.getElementById('who');
-    if (!S.user) { tabs.hidden = true; who.innerHTML = ''; return; }
-    var items = [['#/', 'Dashboard'], ['#/flips', 'Flips'], ['#/holdings', 'Holdings'], ['#/calculator', 'Calculator'], ['#/estimates', isOwner() ? 'All Estimates' : 'My Estimates'], ['#/archive', 'Archive'], ['#/resources', 'Resources']];
-    if (isOwner()) { items.push(['#/expenses', 'Expenses']); items.push(['#/admin', 'Admin']); }
-    tabs.innerHTML = items.map(function (x) { return '<a href="' + x[0] + '" data-h="' + x[0] + '">' + x[1] + '</a>'; }).join('');
+    var mb = document.getElementById('modebar');
+    if (!S.user) { tabs.hidden = true; who.innerHTML = ''; mb.hidden = true; mb.innerHTML = ''; return; }
+    var hm = mode() === 'holdings', items;
+    if (hm) items = [['#/', 'Dashboard'], ['#/holdings', 'Holdings'], ['#/expenses', 'Expenses'], ['#/resources', 'Resources']];
+    else {
+      items = [['#/', 'Dashboard'], ['#/flips', 'Flips'], ['#/calculator', 'Calculator'], ['#/estimates', isOwner() ? 'All Estimates' : 'My Estimates'], ['#/archive', 'Archive'], ['#/resources', 'Resources']];
+      if (isOwner()) { items.push(['#/expenses', 'Expenses']); items.push(['#/admin', 'Admin']); }
+    }
+    if (isOwner()) {
+      mb.innerHTML = '<div class="toggle' + (hm ? ' h' : '') + '" role="tablist" aria-label="Flips or Holdings"><span class="knob"></span><button role="tab" data-m="flips" aria-selected="' + !hm + '" class="' + (hm ? '' : 'on') + '">Flips</button><button role="tab" data-m="holdings" aria-selected="' + hm + '" class="' + (hm ? 'on' : '') + '">Holdings</button></div>';
+      mb.hidden = false;
+      mb.querySelectorAll('button[data-m]').forEach(function (b) { b.onclick = function () { if (b.dataset.m === mode()) return; setMode(b.dataset.m); if (location.hash === '#/' || location.hash === '' || location.hash === '#') route(); else location.hash = '#/'; }; });
+    } else { mb.hidden = true; mb.innerHTML = ''; }
+    tabs.innerHTML = '<div class="nh">' + (hm ? 'Holdings' : 'Flips') + '</div>' + items.map(function (x) { return '<a href="' + x[0] + '" data-h="' + x[0] + '">' + (ICONS[x[1].split(' ').pop()] || '') + '<span>' + x[1] + '</span></a>'; }).join('');
     tabs.hidden = false;
-    who.innerHTML = '<span><b>' + esc(S.user.name || S.user.email) + '</b>' + (isOwner() ? ' · Owner' : '') + '</span><button class="btn sm" id="lo">Sign Out</button>';
-    document.getElementById('lo').onclick = function () { confirmBox('Sign Out', '<p>Also forget this device? You’ll need an emailed code next time.</p>', 'Sign Out And Forget', function () { logout(true); }, 'Just Sign Out', function () { logout(false); }); };
+    var nm = S.user.name || S.user.email, ini = nm.split(/[\s@.]+/).filter(Boolean).slice(0, 2).map(function (w) { return w[0].toUpperCase(); }).join('');
+    who.innerHTML = '<button class="avatar" id="av" aria-haspopup="menu" aria-expanded="false" aria-label="Account">' + esc(ini) + '</button>' +
+      '<div class="menu" id="acct" role="menu" hidden><div class="mh"><b>' + esc(nm) + '</b><span>' + esc(S.user.email) + '</span><div><span class="pill' + (isOwner() ? ' admin' : '') + '">' + (isOwner() ? 'Owner' : 'Member') + '</span></div></div><button role="menuitem" id="lo">Sign Out</button></div>';
+    var av = document.getElementById('av'), mn = document.getElementById('acct');
+    av.onclick = function (e) { e.stopPropagation(); mn.hidden = !mn.hidden; av.setAttribute('aria-expanded', String(!mn.hidden)); };
+    if (!renderChrome.bound) {
+      renderChrome.bound = true;
+      var closeMenu = function (focus) { var m = document.getElementById('acct'), a = document.getElementById('av'); if (m && !m.hidden) { m.hidden = true; a.setAttribute('aria-expanded', 'false'); if (focus) a.focus(); } };
+      document.addEventListener('click', function (e) { var m = document.getElementById('acct'); if (m && !m.contains(e.target)) closeMenu(); });
+      document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeMenu(true); });
+      window.addEventListener('hashchange', function () { closeMenu(); });
+    }
+    requestAnimationFrame(function () { var t = document.querySelector('.top'); if (t) document.documentElement.style.setProperty('--toph', t.offsetHeight + 'px'); });
+    document.getElementById('lo').onclick = function () { mn.hidden = true; confirmBox('Sign Out', '<p>Also forget this device? You’ll need an emailed code next time.</p>', 'Sign Out And Forget', function () { logout(true); }, 'Just Sign Out', function () { logout(false); }); };
   }
   function markTab(h) { document.querySelectorAll('#tabs a').forEach(function (a) { var on = a.dataset.h === h || (h.indexOf('#/flip/') === 0 && a.dataset.h === '#/flips') || (h.indexOf('#/estimate/') === 0 && a.dataset.h === '#/estimates'); a.classList.toggle('on', on); }); }
   function route() {
     if (!S.user) { renderChrome(); return renderLogin(); }
-    var h = location.hash || '#/'; markTab(h.split('?')[0]);
-    var m;
+    var h = location.hash || '#/';
+    var m, base = h.split('?')[0];
+    if (!isOwner() && (base === '#/holdings' || base === '#/expenses')) { location.hash = '#/'; return; }
+    if (base === '#/holdings') setMode('holdings');
+    else if (/^#\/(flips|archive|calculator|estimates|estimate\/|admin)/.test(base)) setMode('flips');
+    markTab(base);
     if (h === '#/' || h === '#') return viewDashboard();
     if (h === '#/flips') return viewFlips(false);
     if (h === '#/archive') return viewFlips(true);
@@ -177,10 +243,11 @@
     return x.investors.filter(function (i) { return firstName(i.name) === me; })[0] || null;
   }
   function viewDashboard() {
+    if (mode() === 'holdings') return viewHoldingsDashboard();
     loading();
     loadFlips(true).then(function (all) {
       var today = todayISO();
-      var flips = all.filter(function (f) { return !isHolding(f); }), holds = all.filter(function (f) { return isHolding(f) && f.status !== 'Sold'; });
+      var flips = all.filter(function (f) { return !isHolding(f); });
       var rows = flips.map(function (f) { return { f: f, x: C.flip(f, today) }; });
       var sold = rows.filter(function (r) { return r.f.status === 'Sold'; }), open = rows.filter(function (r) { return r.f.status !== 'Sold'; });
       var sum = function (a, fn) { return a.reduce(function (s, r) { return s + fn(r); }, 0); };
@@ -189,36 +256,82 @@
       var capSold = sum(sold, function (r) { return Number(r.f.cashInvested) || 0; });
       var roiSold = capSold ? realized / capSold : null, roiOpen = capOpen ? projected / capOpen : null;
       var stakes = rows.map(function (r) { return myStake(r.f, r.x); }).filter(Boolean);
-      var html = '<div class="spread"><div><h1>' + (isOwner() ? 'Portfolio Dashboard' : 'Your Flips') + '</h1><p class="lead">' + flips.length + ' flip' + (flips.length === 1 ? '' : 's') + ' · ' + open.length + ' open · ' + sold.length + ' sold</p></div>' +
-        '<div class="row"><a class="btn gold" href="#/calculator">New Estimate</a></div></div>';
+      var ann = sold.filter(function (r) { return r.x.simpleAnnual != null; });
+      var html = '<div class="spread"><div><h1>' + (isOwner() ? 'Flips Dashboard' : 'Your Flips') + '</h1><p class="lead">' + flips.length + ' flip' + (flips.length === 1 ? '' : 's') + ' · ' + open.length + ' open · ' + sold.length + ' sold</p></div>' +
+        '<div class="row" style="margin-bottom:18px"><a class="btn gold" href="#/calculator">New Estimate</a></div></div>';
       html += '<div class="grid g4">' +
         kpi('Capital In Open Flips', money(capOpen, 0), 'Cash invested, excluding loans') +
-        kpi('Projected Profit (Open)', sMoney(projected, 0), 'At today’s projected sale prices', projected < 0 ? 'bad' : 'good') +
+        kpi('Projected Profit (Open)', sMoney(projected, 0), pct(roiOpen, 0) + ' on cash in open flips', projected < 0 ? 'bad' : 'good', { v: roiOpen, max: 1, tone: roiOpen < 0 ? 'bad' : 'good', label: pct(roiOpen, 0) }) +
         kpi('Realized Profit (Sold)', sMoney(realized, 0), sold.length + ' sold flip' + (sold.length === 1 ? '' : 's'), realized < 0 ? 'bad' : 'good') +
-        kpi('Return On Cash (Sold)', sPct(roiSold), 'Profit ÷ cash invested') + '</div>';
+        kpi('Return On Cash (Sold)', sPct(roiSold), 'Profit ÷ cash invested', null, { v: roiSold, max: 1, tone: roiSold < 0 ? 'bad' : 'good', label: pct(roiSold, 0) }) + '</div>';
       if (stakes.length) {
         var yc = stakes.reduce(function (s, i) { return s + i.capital; }, 0), yp = stakes.reduce(function (s, i) { return s + i.profitShare; }, 0);
         html += '<div class="label">Your Share</div><div class="grid g3">' + kpi('Your Capital In', money(yc, 0), 'Across ' + stakes.length + ' flip' + (stakes.length === 1 ? '' : 's')) +
           kpi('Your Profit Share', sMoney(yp, 0), 'Sold + projected', yp < 0 ? 'bad' : 'good') + kpi('Your Total Payout', money(yc + yp, 0), 'Capital returned first, then your split') + '</div>';
       }
-      html += '<div class="label">Investment Circles</div><div class="grid g3">' +
-        '<div class="card"><h2>Return On Cash · Sold</h2><p class="meta">Profit ÷ cash invested</p><div style="display:flex;justify-content:center;margin-top:10px">' + donut(roiSold || 0, 1, pct(roiSold, 0), 'Sold Flips', roiSold == null ? 'gold' : (roiSold >= 0 ? 'good' : 'bad')) + '</div></div>' +
-        '<div class="card"><h2>Projected Return · Open</h2><p class="meta">Projected profit ÷ cash in</p><div style="display:flex;justify-content:center;margin-top:10px">' + donut(roiOpen || 0, 1, pct(roiOpen, 0), 'Open Flips', roiOpen == null ? 'gold' : (roiOpen >= 0 ? 'good' : 'bad')) + '</div></div>' +
-        '<div class="card"><h2>Where The Cash Is</h2><p class="meta">Cash invested by flip</p><div class="row" style="justify-content:center;gap:18px;margin-top:10px">' +
-        multiDonut(rows.map(function (r, i) { return { v: Number(r.f.cashInvested) || 0, color: PALETTE[i % PALETTE.length] }; }), '$' + Math.round((capOpen + capSold) / 1000).toLocaleString('en-US') + 'K', 'Total Cash In') +
-        '<div class="legend">' + rows.map(function (r, i) { return '<span><i style="background:' + PALETTE[i % PALETTE.length] + '"></i>' + esc(r.f.address) + '</span>'; }).join('') + '</div></div></div></div>';
+      html += '<div class="grid g21" style="margin-top:16px"><div class="card rule"><h2>Cash In Vs Profit</h2><p class="meta">By flip · sold and projected</p>' +
+        vbars(rows.map(function (r) { return { label: r.f.address, a: Number(r.f.cashInvested) || 0, b: r.x.profit }; }), { id: 'vbI', name: 'Cash In', key: '#000007' }, { id: 'vbE', name: 'Profit', key: '#1FA855', neg: true }) + '</div>' +
+        '<div class="card rule"><h2>Annualized Return · Sold</h2><p class="meta">Simple annualized, purchase to close</p>' +
+        (ann.length ? hbars(ann.map(function (r) { return { label: r.f.address + ' · ' + r.x.daysHeld + ' days', value: r.x.simpleAnnual, display: sPct(r.x.simpleAnnual), tone: r.x.simpleAnnual < 0 ? 'bad' : 'good' }; })) : '<p class="empty">No sold flips with both dates yet.</p>') +
+        '<div class="statgrid"><div>Total Cash In<b>' + money(capOpen + capSold, 0) + '</b></div><div>Open<b>' + open.length + '</b></div><div>Sold<b>' + sold.length + '</b></div></div></div></div>';
       html += '<div class="label">Open Flips</div>' + flipCards(open) + '<div class="label">Recently Sold</div>' + flipCards(sold.slice(0, 4));
-      if (holds.length) {
-        var hx = holds.map(function (f) { return C.holding(f); });
-        var hs = function (k) { return hx.reduce(function (t, x) { return t + (x[k] || 0); }, 0); };
-        html += '<div class="label">Holdings</div><div class="grid g4">' + kpi('Holdings Value', money(hs('value'), 0), holds.length + ' propert' + (holds.length === 1 ? 'y' : 'ies')) +
-          kpi('Equity', sMoney(hs('equity'), 0), 'Value minus loan balances', 'good') + kpi('Monthly Rent', money(hs('rent'), 0), hx.some(function (x) { return x.hasIncome; }) ? sMoney(hs('monthlyCashFlow'), 0) + ' cash flow' : 'Cash flow needs monthly expenses') +
-          kpi('Cash In Holdings', money(hs('cashInvested'), 0), 'Purchase cash plus improvements') + '</div>' + holdingCards(holds);
-      }
       $app.innerHTML = html; bindCards(); animate();
     }).catch(fail);
   }
-  function kpi(k, v, sub, tone) { return '<div class="card kpi' + (tone ? ' ' + tone : '') + '"><div class="k">' + k + '</div><div class="v">' + v + '</div><div class="meta">' + esc(sub || '') + '</div></div>'; }
+  function viewHoldingsDashboard() {
+    loading();
+    loadFlips(true).then(function (all) {
+      var list = all.filter(function (f) { return isHolding(f) && f.status !== 'Sold'; });
+      var hx = list.map(function (f) { return { f: f, x: C.holding(f) }; });
+      var hs = function (k) { return hx.reduce(function (t, r) { return t + (r.x[k] || 0); }, 0); };
+      var known = hx.filter(function (r) { return r.x.hasIncome; }), cashKnown = known.reduce(function (t, r) { return t + (r.x.cashInvested || 0); }, 0);
+      var noi = known.reduce(function (t, r) { return t + r.x.noi; }, 0), coc = cashKnown ? noi / cashKnown : null;
+      var cash = hs('cashInvested'), eq = hs('equity'), eqGain = cash ? (eq - cash) / cash : null;
+      var deps = list.reduce(function (t, f) { return t + depositsHeld(f); }, 0);
+      var html = '<div class="spread"><div><h1>Holdings Dashboard</h1><p class="lead">' + list.length + ' propert' + (list.length === 1 ? 'y' : 'ies') + ' held · rent, cash flow and equity</p></div>' +
+        '<div class="row" style="margin-bottom:18px"><a class="btn" href="#/holdings">All Holdings</a></div></div>';
+      html += '<div class="grid g4">' +
+        kpi('Monthly Cash Flow', known.length ? sMoney(hs('monthlyCashFlow'), 0) : '<span class="pill warn">Needs Data</span>', money(hs('rent'), 0) + ' rent − ' + money(hs('expenses'), 0) + ' expenses', 'good') +
+        kpi('Annual NOI', known.length ? sMoney(noi, 0) : '—', 'Rent minus operating expenses', 'good') +
+        kpi('Cash-On-Cash', sPct(coc), 'Annual cash flow ÷ cash in', null, { v: coc, max: 1, tone: coc < 0 ? 'bad' : 'good', label: pct(coc, 0) }) +
+        kpi('Equity', sMoney(eq, 0), pct(eqGain, 0) + ' gain on cash in', eq < 0 ? 'bad' : 'good', { v: eqGain, max: 1, tone: eqGain < 0 ? 'bad' : 'good', label: pct(eqGain, 0) }) + '</div>';
+      html += '<div class="grid g21" style="margin-top:16px"><div class="card rule"><h2>Rent Vs Expenses</h2><p class="meta">Monthly, by property</p>' +
+        vbars(hx.map(function (r) { return { label: r.f.address, a: r.x.rent || 0, b: r.x.expenses || 0 }; }), { id: 'vbE', name: 'Rent', key: '#1FA855' }, { id: 'vbG', name: 'Expenses', key: '#D5BE87' }) + '</div>' +
+        '<div class="card rule"><h2>Snapshot</h2><p class="meta">Across all holdings</p><div class="lines">' +
+        '<div class="ln"><span>Holdings Value</span><span class="num">' + money(hs('value'), 0) + '</span></div>' +
+        '<div class="ln"><span>Cash In</span><span class="num">' + money(cash, 0) + '</span></div>' +
+        '<div class="ln"><span>Loan Balances</span><span class="num">' + money(hs('loanBalance'), 0) + '</span></div>' +
+        '<div class="ln"><span>Monthly Rent</span><span class="num">' + money(hs('rent'), 0) + '</span></div>' +
+        '<div class="ln"><span>Deposits Held (Owed To Tenants)</span><span class="num">' + money(deps, 0) + '</span></div>' +
+        '<div class="ln tot"><span>Cash Flow / Year</span><span class="num">' + sMoney(hs('annualCashFlow'), 0) + '</span></div></div></div></div>';
+      html += '<div class="label">Holdings</div>' + holdingCards(list);
+      $app.innerHTML = html; bindCards(); animate();
+    }).catch(fail);
+  }
+  function kpi(k, v, sub, tone, ring) {
+    var body = '<div class="k">' + k + '</div><div class="v">' + v + '</div><div class="meta">' + esc(sub || '') + '</div>';
+    if (!ring) return '<div class="card kpi' + (tone ? ' ' + tone : '') + '">' + body + '</div>';
+    return '<div class="card kpi ringk' + (tone ? ' ' + tone : '') + '"><div class="mring">' + mring(ring.v, ring.max, ring.tone, ring.label) + '</div><div class="kb">' + body + '</div></div>';
+  }
+  function mring(value, max, tone, label) {
+    var size = 54, sw = 6, r = (size - sw) / 2, c = 2 * Math.PI * r, frac = value == null || !(max > 0) ? 0 : Math.max(0, Math.min(1, Math.abs(value) / max));
+    var id = 'm' + Math.random().toString(36).slice(2, 8), st = tone === 'good' ? ['#1FA855', '#0B6B34'] : tone === 'bad' ? ['#EF0207', '#9A0007'] : ['#EAD59E', '#D5BE87'];
+    return '<svg width="' + size + '" height="' + size + '" viewBox="0 0 ' + size + ' ' + size + '" aria-hidden="true"><defs><linearGradient id="' + id + '" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="' + st[0] + '"/><stop offset="1" stop-color="' + st[1] + '"/></linearGradient></defs>' +
+      '<circle cx="27" cy="27" r="' + r + '" fill="none" stroke="#EEEEF0" stroke-width="' + sw + '"/><circle class="arc" cx="27" cy="27" r="' + r + '" fill="none" stroke="url(#' + id + ')" stroke-width="' + sw + '" stroke-linecap="round" stroke-dasharray="' + c.toFixed(2) + '" stroke-dashoffset="' + c.toFixed(2) + '" data-off="' + (c * (1 - frac)).toFixed(2) + '" transform="rotate(-90 27 27)"/>' +
+      '<text x="27" y="30.5" text-anchor="middle" font-family="Inter,sans-serif" font-size="10.5" font-weight="800" fill="#000007">' + esc(label || '') + '</text></svg>';
+  }
+  var ICO = function (d) { return '<svg viewBox="0 0 24 24" aria-hidden="true">' + d + '</svg>'; };
+  var ICONS = {
+    Dashboard: ICO('<rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/>'),
+    Flips: ICO('<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/><path d="M10 20v-6h4v6"/>'),
+    Holdings: ICO('<path d="M3 21h18"/><path d="M5 21V8l7-5 7 5v13"/><path d="M9 21v-5h6v5"/><path d="M9 10h.01M15 10h.01"/>'),
+    Calculator: ICO('<rect x="5" y="2" width="14" height="20" rx="2"/><path d="M8 6h8M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15h.01M8 19h8"/>'),
+    Estimates: ICO('<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h5"/>'),
+    Archive: ICO('<rect x="3" y="3" width="18" height="5" rx="1"/><path d="M5 8v12h14V8M10 12h4"/>'),
+    Resources: ICO('<circle cx="9" cy="8" r="4"/><path d="M2 21c0-4 3-6 7-6s7 2 7 6"/><path d="M17 11a3 3 0 1 0 0-6M22 21c0-3-2-5-5-5.5"/>'),
+    Expenses: ICO('<rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/>'),
+    Admin: ICO('<path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z"/><path d="M9 12l2 2 4-4"/>')
+  };
   function flipCards(rows) {
     if (!rows.length) return '<p class="empty">Nothing here yet.</p>';
     return '<div class="grid g2">' + rows.map(function (r) {
@@ -260,16 +373,17 @@
   function viewFlip(id) {
     loading();
     api('getFlip', { id: id }).then(function (f) {
-      if (isHolding(f)) return renderHolding(f);
+      if (isHolding(f)) { setMode('holdings'); return renderHolding(f); }
+      setMode('flips');
       var x = C.flip(f, todayISO()), sold = f.status === 'Sold', can = f.canManage, own = isOwner();
+      markTab(sold ? '#/archive' : '#/flips');
       var ln = function (k, v, cls) { return '<div class="ln' + (cls ? ' ' + cls : '') + '"><span>' + k + '</span><span class="num">' + v + '</span></div>'; };
       var budgetPct = f.rehabBudget ? Math.min(1.5, f.rehabSpent / f.rehabBudget) : 0;
       var html = '<p class="meta"><a href="#/' + (sold ? 'archive' : 'flips') + '">← ' + (sold ? 'Archive' : 'Flips') + '</a></p>' +
         '<div class="spread"><div><h1>' + esc(f.address) + '</h1><p class="lead">' + esc(f.city) + (f.partners ? ' · ' + esc(f.partners) : '') + '</p></div><div class="row">' +
         (can ? '<select id="st" class="btn" aria-label="Status">' + STATUSES.map(function (s) { return '<option' + (s === f.status ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select>' : '<span class="pill s-' + esc(f.status.replace(/\s/g, '')) + '">' + esc(f.status) + '</span>') +
         (can ? '<button class="btn" id="ed">Edit Numbers</button>' : '') + (can ? '<button class="btn gold" id="inv">Invite User</button>' : '') + '</div></div>';
-      if (f.datesNote) html += '<p class="note' + (/Needs Date/.test(f.datesNote) ? ' bad' : '') + '">' + esc(f.datesNote) + '</p>';
-      html += '<div class="grid g4" style="margin-top:18px">' +
+      html += '<div class="grid g4" style="margin-top:4px">' +
         kpi(sold ? 'Profit' : 'Projected Profit', sMoney(x.profit, 0), sold ? 'Sale minus every cost' : 'At a ' + money(f.salePrice, 0) + ' sale', x.profit < 0 ? 'bad' : 'good') +
         kpi('Return On Cash', sPct(x.roiCash), 'On ' + money(f.cashInvested, 0) + ' cash in') +
         kpi('Return On Total Cost', sPct(x.roiCost), 'On ' + money(x.totalCost, 0) + ' all-in') +
@@ -286,7 +400,6 @@
         '<hr class="sep"><h2>Investors</h2><p class="meta">Capital returned first, then the profit split</p>' +
         (x.investors.length ? '<table class="t"><thead><tr><th>Investor</th><th class="r">Capital</th><th class="r">Split</th><th class="r">Profit Share</th><th class="r">Payout</th></tr></thead><tbody>' + x.investors.map(function (i) { return '<tr><td>' + esc(i.name) + '</td><td class="r num">' + money(i.capital, 0) + '</td><td class="r">' + pct(i.split, 1) + '</td><td class="r num">' + sMoney(i.profitShare, 0) + '</td><td class="r num"><b>' + money(i.distribution, 0) + '</b></td></tr>'; }).join('') + '</tbody></table>' : '<p class="empty">No investors listed.</p>') +
         '<hr class="sep"><div class="mini"><div>Purchased<b>' + (fmtDate(f.purchaseDate) || '<span class="pill warn">Needs Date</span>') + '</b></div><div>Sold<b>' + (sold ? soldCell(f) : '—') + '</b></div><div>Cash In<b>' + money(f.cashInvested, 0) + '</b></div></div></div></div>';
-      if (f.notes) html += '<div class="label">How These Numbers Were Built</div><div class="card"><p style="margin:0;white-space:pre-wrap" class="sub2">' + esc(f.notes) + '</p></div>';
       html += '<div class="label">Inventory Needs List</div><div id="invlist"></div>';
       if (f.access) {
         html += '<div class="label">Who Can See This Flip</div><div class="card tblwrap"><table class="t"><thead><tr><th>User</th><th>Role</th><th>Invited</th><th>Last Sign-In</th><th></th></tr></thead><tbody>' +
@@ -540,9 +653,8 @@
     var ln = function (k, v, cls) { return '<div class="ln' + (cls ? ' ' + cls : '') + '"><span>' + k + '</span><span class="num">' + v + '</span></div>'; };
     var html = '<p class="meta"><a href="#/holdings">← Holdings</a></p><div class="spread"><div><h1>' + esc(f.address) + '</h1><p class="lead">' + esc(f.city) + (f.partners ? ' · ' + esc(f.partners) : '') + '</p></div><div class="row">' +
       (can ? '<select id="st" class="btn" aria-label="Status">' + HSTATUSES.map(function (s) { return '<option' + (s === f.status ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select>' : '<span class="pill">' + esc(f.status) + '</span>') +
-      (can ? '<button class="btn" id="ed">Edit Numbers</button><button class="btn gold" id="inv">Invite User</button>' : '') + '</div></div>';
-    if (f.datesNote) html += '<p class="note' + (/Needs Date/.test(f.datesNote) ? ' bad' : '') + '">' + esc(f.datesNote) + '</p>';
-    html += '<div class="grid g4" style="margin-top:18px">' +
+      (can ? '<button class="btn gold" id="ed">Edit Numbers</button>' : '') + '</div></div>';
+    html += '<div class="grid g4" style="margin-top:4px">' +
       kpi('Equity', sMoney(x.equity, 0), (x.value ? money(x.value, 0) + ' value' : 'Needs value') + ' − ' + money(x.loanBalance, 0) + ' loan', x.equity < 0 ? 'bad' : 'good') +
       kpi('Monthly Cash Flow', x.hasIncome ? sMoney(x.monthlyCashFlow, 0) : '<span class="pill warn">Needs Data</span>', x.hasIncome ? money(x.noi, 0) + ' annual NOI' : (x.rent ? money(x.rent, 0) + ' rent; add monthly expenses' : 'Add rent and monthly expenses')) +
       kpi('Cash-On-Cash', x.hasIncome ? sPct(x.cashOnCash) : '—', 'Annual cash flow ÷ cash in') +
@@ -555,16 +667,14 @@
       '<div class="card rule"><h2>Return</h2><p class="meta">Equity gain plus cash flow on the cash you put in</p><div style="display:flex;justify-content:center;gap:18px;margin-top:10px">' +
       donut(x.equityRoi || 0, 1, pct(x.equityRoi, 0), 'Equity Gain', x.equityRoi == null ? 'gold' : (x.equityRoi >= 0 ? 'good' : 'bad')) + donut(x.cashOnCash || 0, 0.2, x.hasIncome ? pct(x.cashOnCash, 1) : '—', 'Cash-On-Cash', 'gold') + '</div>' +
       '<hr class="sep"><div class="mini"><div>Purchased<b>' + (fmtDate(f.purchaseDate) || '<span class="pill warn">Needs Date</span>') + '</b></div><div>Months Held<b>' + (x.monthsHeld == null ? '—' : x.monthsHeld) + '</b></div><div>Value Vs All-In<b>' + sMoney(x.value ? x.value - x.allIn : 0, 0) + '</b></div></div></div></div>';
-    if (f.notes) html += '<div class="label">How These Numbers Were Built</div><div class="card"><p style="margin:0;white-space:pre-wrap" class="sub2">' + esc(f.notes) + '</p></div>';
-    html += '<div class="label">Inventory Needs List</div><div id="invlist"></div>' + accessBlock(f, 'Holding');
+    html += '<div class="label">Inventory Needs List</div><div id="invlist"></div>';
     if (f.estimates && f.estimates.length) html += '<div class="label">Estimates Tied To This Holding</div>' + estTable(f.estimates);
     $app.innerHTML = html; animate();
     renderInventory('flip', f.id, f.inventory || [], can);
     var st = document.getElementById('st');
     if (st) st.onchange = function () { api('setStatus', { id: f.id, status: st.value }).then(function () { toast('Status set to ' + st.value + '.'); S.flips = null; viewFlip(f.id); }).catch(function (e) { fail(e); st.value = f.status; }); };
     var ed = document.getElementById('ed'); if (ed) ed.onclick = function () { editFlip(f); };
-    var inv = document.getElementById('inv'); if (inv) inv.onclick = function () { inviteModal(f); };
-    bindAccess(f); if (typeof bindEstRows === 'function') bindEstRows();
+    if (typeof bindEstRows === 'function') bindEstRows();
   }
 
   /* ---------- LANA HOMES Expenses (owner only) ---------- */
@@ -584,7 +694,15 @@
   }
   function viewExpenses() {
     loading();
-    Promise.all([api('listExpenses'), loadFlips(true)]).then(function (res) { EX.items = res[0].items; EX.cats = res[0].categories; EX.props = res[1]; drawExpenses(); }).catch(fail);
+    Promise.all([api('listExpenses'), loadFlips(true)]).then(function (res) {
+      var props = res[1], kindOf = {}; props.forEach(function (p) { kindOf[p.id] = isHolding(p) ? 'holding' : 'flip'; });
+      var want = mode() === 'holdings' ? 'holding' : 'flip';
+      // Each mode shows its own properties' expenses plus General LLC entries.
+      EX.items = res[0].items.filter(function (e) { return e.linkType === 'general' || !e.linkId || (kindOf[e.linkId] || e.linkType) === want; });
+      EX.cats = res[0].categories; EX.props = props.filter(inMode);
+      if (EX.f.link && EX.f.link !== 'general' && !EX.props.some(function (p) { return p.id === EX.f.link; })) EX.f.link = '';
+      drawExpenses();
+    }).catch(fail);
   }
   function drawExpenses() {
     var rows = exFiltered(), f = EX.f;
@@ -593,14 +711,14 @@
     var byLink = {}; rows.forEach(function (e) { var k = exLinkLabel(e); byLink[k] = (byLink[k] || 0) + e.amount; });
     var need = rows.filter(function (e) { return /Needs (Date|Amount)/.test(e.notes); }).length;
     var opt = function (v, l, cur) { return '<option value="' + esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(l) + '</option>'; };
-    var html = '<div class="spread"><div><h1>LANA HOMES Expenses</h1><p class="lead">Every LLC expense, tied to a flip, a holding or General LLC. Only you can see this.</p></div><div class="row"><button class="btn" id="csv">Export CSV</button><button class="btn gold" id="nx">Add Expense</button></div></div>';
+    var html = '<div class="spread"><div><h1>' + (mode() === 'holdings' ? 'Holdings Expenses' : 'Flips Expenses') + '</h1><p class="lead">' + (mode() === 'holdings' ? 'Holdings' : 'Flips') + ' expenses plus General LLC. Only you can see this.</p></div><div class="row"><button class="btn" id="csv">Export CSV</button><button class="btn gold" id="nx">Add Expense</button></div></div>';
     html += '<div class="card"><div class="calcgrid">' +
       '<div class="field"><label>Property</label><select id="xl">' + opt('', 'All', f.link) + opt('general', 'General LLC', f.link) + EX.props.map(function (p) { return opt(p.id, (isHolding(p) ? 'Holding · ' : 'Flip · ') + p.address, f.link); }).join('') + '</select></div>' +
       '<div class="field"><label>Category</label><select id="xc">' + opt('', 'All', f.cat) + EX.cats.map(function (c) { return opt(c, c, f.cat); }).join('') + '</select></div>' +
       '<div class="field"><label>From</label><input type="date" id="xf" value="' + esc(f.from) + '"></div><div class="field"><label>To</label><input type="date" id="xt" value="' + esc(f.to) + '"></div>' +
       '<div class="field"><label>Search</label><input id="xq" value="' + esc(f.q) + '" placeholder="Payee, notes, method"></div></div></div>';
     html += '<div class="grid g4" style="margin-top:22px">' + kpi('Total', money(total), rows.length + ' entr' + (rows.length === 1 ? 'y' : 'ies')) +
-      kpi('General LLC', money(byLink['General LLC'] || 0), 'Not tied to a property') + kpi('Tied To Properties', money(total - (byLink['General LLC'] || 0)), 'Flips and holdings') +
+      kpi('General LLC', money(byLink['General LLC'] || 0), 'Not tied to a property') + kpi('Tied To Properties', money(total - (byLink['General LLC'] || 0)), mode() === 'holdings' ? 'Holdings' : 'Flips') +
       kpi('Needs Info', String(need), 'Missing a date or amount', need ? 'bad' : '') + '</div>';
     html += '<div class="grid g2" style="margin-top:22px"><div class="card"><h2>By Category</h2><div class="lines">' + Object.keys(byCat).sort(function (a, b) { return byCat[b] - byCat[a]; }).map(function (k) { return '<div class="ln"><span>' + esc(k) + '</span><span class="num">' + money(byCat[k]) + '</span></div>'; }).join('') + '</div></div>' +
       '<div class="card"><h2>By Property</h2><div class="lines">' + Object.keys(byLink).sort(function (a, b) { return byLink[b] - byLink[a]; }).map(function (k) { return '<div class="ln"><span>' + esc(k) + '</span><span class="num">' + money(byLink[k]) + '</span></div>'; }).join('') + '</div></div></div>';
@@ -658,21 +776,20 @@
   function viewAdmin() {
     loading();
     Promise.all([api('listUsers'), loadFlips(true)]).then(function (res) {
-      var users = res[0], flips = res[1];
-      var html = '<div class="spread"><div><h1>Admin</h1><p class="lead">Invite people to specific flips and holdings. They only see what they’re invited to. Only you can grant Admin on a property.</p></div><div class="row"><button class="btn gold" id="nf">New Flip</button><button class="btn" id="nh">New Holding</button><a class="btn" href="#/estimates">All Estimates</a></div></div>';
+      var users = res[0], flips = res[1].filter(function (f) { return !isHolding(f); });
+      var html = '<div class="spread"><div><h1>Admin</h1><p class="lead">Invite people to specific flips. They only see what they’re invited to. Holdings stay private to you. Only you can grant Admin on a flip.</p></div><div class="row" style="margin-bottom:18px"><button class="btn gold" id="nf">New Flip</button><a class="btn" href="#/estimates">All Estimates</a></div></div>';
       html += '<div class="label">Invite Someone</div><div class="card rule"><div class="calcgrid"><div class="field"><label>Email</label><input id="aem" type="email"></div><div class="field"><label>Name (Optional)</label><input id="anm"></div>' +
-        '<div class="field"><label>Flip Or Holding</label><select id="afl">' + flips.map(function (f) { return '<option value="' + esc(f.id) + '">' + (isHolding(f) ? 'Holding · ' : 'Flip · ') + esc(f.address) + ' · ' + esc(f.status) + '</option>'; }).join('') + '</select></div>' +
-        '<div class="field"><label>Role</label><select id="arl"><option value="member">Member — View Only</option><option value="admin">Admin On This Property</option></select></div></div><button class="btn gold" id="ainv">Send Invite</button></div>';
-      html += '<div class="label">Users</div><div class="card tblwrap"><table class="t"><thead><tr><th>User</th><th>Flips &amp; Holdings</th><th class="r">Estimates</th><th>Last Sign-In</th><th></th></tr></thead><tbody>' +
+        '<div class="field"><label>Flip</label><select id="afl">' + flips.map(function (f) { return '<option value="' + esc(f.id) + '">' + esc(f.address) + ' · ' + esc(f.status) + '</option>'; }).join('') + '</select></div>' +
+        '<div class="field"><label>Role</label><select id="arl"><option value="member">Member — View Only</option><option value="admin">Admin On This Flip</option></select></div></div><button class="btn gold" id="ainv">Send Invite</button></div>';
+      html += '<div class="label">Users</div><div class="card tblwrap"><table class="t"><thead><tr><th>User</th><th>Flips</th><th class="r">Estimates</th><th>Last Sign-In</th><th></th></tr></thead><tbody>' +
         users.map(function (u) {
           return '<tr><td><b>' + esc(u.name || u.email) + '</b>' + (u.role === 'owner' ? ' <span class="pill admin">Owner</span>' : '') + (u.active ? '' : ' <span class="pill warn">Off</span>') + '<div class="meta">' + esc(u.email) + '</div></td>' +
-            '<td>' + (u.role === 'owner' ? '<span class="meta">All flips and holdings</span>' : (u.flips.length ? u.flips.map(function (f) { return '<a class="pill' + (f.role === 'admin' ? ' admin' : '') + '" style="margin:2px;text-decoration:none" href="#/flip/' + esc(f.flipId) + '">' + esc(f.address) + (f.role === 'admin' ? ' · Admin' : '') + '</a>'; }).join('') : '<span class="meta">None</span>')) + '</td>' +
+            '<td>' + (u.role === 'owner' ? '<span class="meta">Everything</span>' : (u.flips.filter(function (f) { return f.kind !== 'holding'; }).length ? u.flips.filter(function (f) { return f.kind !== 'holding'; }).map(function (f) { return '<a class="pill' + (f.role === 'admin' ? ' admin' : '') + '" style="margin:2px;text-decoration:none" href="#/flip/' + esc(f.flipId) + '">' + esc(f.address) + (f.role === 'admin' ? ' · Admin' : '') + '</a>'; }).join('') : '<span class="meta">None</span>')) + '</td>' +
             '<td class="r num">' + u.estimates + '</td><td class="meta">' + (u.lastLogin ? new Date(u.lastLogin).toLocaleString() : 'Never') + '</td>' +
             '<td class="r">' + (u.role === 'owner' ? '' : '<button class="btn sm' + (u.active ? ' danger' : '') + '" data-act="' + esc(u.id) + '" data-on="' + (u.active ? '0' : '1') + '">' + (u.active ? 'Turn Off' : 'Turn On') + '</button>') + '</td></tr>';
         }).join('') + '</tbody></table></div>';
       $app.innerHTML = html;
       document.getElementById('nf').onclick = function () { editFlip(null); };
-      document.getElementById('nh').onclick = function () { editFlip(null, 'holding'); };
       document.getElementById('ainv').onclick = function () {
         var b = this; b.disabled = true;
         api('inviteUser', { flipId: document.getElementById('afl').value, email: document.getElementById('aem').value, name: document.getElementById('anm').value, role: document.getElementById('arl').value })
