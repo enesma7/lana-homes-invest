@@ -271,3 +271,5 @@ input.code::placeholder{color:#D9D9DE;letter-spacing:.42em}
 @media(max-width:900px){.auth-trust{margin-top:20px}}
 .menu button svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;opacity:.8}
 .menu .mh span.pill.admin{color:#fff}.menu .mh span.pill{font-size:11px;color:var(--char)}.menu .mh span.pill.admin{color:#fff}
+.menu button{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+@media (max-width:640px){.menu button{min-height:44px;font-size:14px}}

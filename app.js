@@ -180,12 +180,16 @@
     if (location.search) history.replaceState(null, '', location.pathname + location.hash);
     renderChrome(); location.hash = '#/'; route(); return true;
   }
-  function logout(forget) {
-    var email = S.user && S.user.email, dt = email && localStorage.getItem(devKey(email));
-    api('logout', { deviceToken: dt, forget: !!forget }).catch(function () {}).then(function () {
-      if (forget && email) localStorage.removeItem(devKey(email));
-      signOutLocal(); route();
-    });
+  // Sign out right away on this device: drop the session and the 30-day trusted-device token
+  // first, show the sign-in page, then tell the server in the background (keepalive survives navigation).
+  function logout() {
+    var tok = S.token, email = (S.user && S.user.email) || localStorage.getItem('fl_last_email') || '', dt = email && localStorage.getItem(devKey(email));
+    if (email) localStorage.removeItem(devKey(email));
+    try { sessionStorage.removeItem('fl_token'); } catch (e) {}
+    signOutLocal(); location.hash = '#/'; route();
+    if (CFG.API_URL && tok) {
+      try { fetch(CFG.API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ action: 'logout', token: tok, deviceToken: dt || '', forget: true }), redirect: 'follow', credentials: 'omit', cache: 'no-store', keepalive: true }).catch(function () {}); } catch (e) {}
+    }
   }
 
   /* ---------- chrome / routing ---------- */
@@ -208,7 +212,7 @@
     tabs.hidden = false;
     var nm = S.user.name || S.user.email, ini = nm.split(/[\s@.]+/).filter(Boolean).slice(0, 2).map(function (w) { return w[0].toUpperCase(); }).join('');
     who.innerHTML = '<button class="avatar" id="av" aria-haspopup="menu" aria-expanded="false" aria-label="Account">' + esc(ini) + '</button>' +
-      '<div class="menu" id="acct" role="menu" hidden><div class="mh"><b>' + esc(nm) + '</b><span>' + esc(S.user.email) + '</span><div><span class="pill' + (isOwner() ? ' admin' : '') + '">' + (isOwner() ? 'Owner' : 'Member') + '</span></div></div>' + (isOwner() ? '<button role="menuitem" id="mex">' + ICONS.Expenses + 'Expenses</button><button role="menuitem" id="adm">' + ICONS.Admin + 'Admin</button>' : '') + '<button role="menuitem" id="lo">Sign Out</button></div>';
+      '<div class="menu" id="acct" role="menu" hidden><div class="mh"><b>' + esc(nm) + '</b><span>' + esc(S.user.email) + '</span><div><span class="pill' + (isOwner() ? ' admin' : '') + '">' + (isOwner() ? 'Owner' : 'Member') + '</span></div></div>' + (isOwner() ? '<button type="button" role="menuitem" id="mex">' + ICONS.Expenses + 'Expenses</button><button type="button" role="menuitem" id="adm">' + ICONS.Admin + 'Admin</button>' : '') + '<button type="button" role="menuitem" id="lo">Sign Out</button></div>';
     var av = document.getElementById('av'), mn = document.getElementById('acct');
     av.onclick = function (e) { e.stopPropagation(); mn.hidden = !mn.hidden; av.setAttribute('aria-expanded', String(!mn.hidden)); };
     if (!renderChrome.bound) {
@@ -221,7 +225,7 @@
     requestAnimationFrame(function () { var t = document.querySelector('.top'); if (t) document.documentElement.style.setProperty('--toph', t.offsetHeight + 'px'); });
     var mex = document.getElementById('mex'); if (mex) mex.onclick = function () { mn.hidden = true; av.setAttribute('aria-expanded', 'false'); location.hash = '#/expenses'; };
     var adm = document.getElementById('adm'); if (adm) adm.onclick = function () { mn.hidden = true; av.setAttribute('aria-expanded', 'false'); setMode('flips'); location.hash = '#/admin'; };
-    document.getElementById('lo').onclick = function () { mn.hidden = true; confirmBox('Sign Out', '<p>Also forget this device? You’ll need an emailed code next time.</p>', 'Sign Out And Forget', function () { logout(true); }, 'Just Sign Out', function () { logout(false); }); };
+    document.getElementById('lo').onclick = function (e) { e.preventDefault(); e.stopPropagation(); mn.hidden = true; logout(); };
   }
   function markTab(h) { document.querySelectorAll('#tabs a').forEach(function (a) { var on = a.dataset.h === h || (h.indexOf('#/flip/') === 0 && a.dataset.h === '#/flips') || (h.indexOf('#/estimate/') === 0 && a.dataset.h === '#/estimates'); a.classList.toggle('on', on); }); }
   function route() {
