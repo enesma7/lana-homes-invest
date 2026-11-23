@@ -17,6 +17,8 @@
   function signed(html, v) { return v > 0 ? '<span class="pos">' + html + '</span>' : (v < 0 ? '<span class="neg">' + html + '</span>' : '<span>' + html + '</span>'); }
   function sMoney(v, dec) { return signed(money(v, dec), v); }
   function sPct(v) { return v == null ? '—' : signed(pct(v), v); }
+  function soldYear(f) { var m = /Sold (\d{4})\b/.exec(f && f.datesNote || ''); return m ? m[1] : ''; }
+  function soldCell(f) { return fmtDate(f.saleDate) || ((soldYear(f) ? soldYear(f) + ' ' : '') + '<span class="pill warn">Needs Date</span>'); }
   function fmtDate(d) { if (!d) return ''; var p = d.split('-'); return p.length === 3 ? (+p[1]) + '/' + (+p[2]) + '/' + p[0] : d; }
   function todayISO() { var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
   function toast(msg, err) { var t = document.getElementById('toast'); t.textContent = msg; t.className = 'toast' + (err ? ' err' : ''); t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(function () { t.hidden = true; }, 3800); }
@@ -223,7 +225,7 @@
       return '<div class="card flipcard rule" data-id="' + esc(f.id) + '" tabindex="0"><div class="spread"><div><div class="addr">' + esc(f.address) + '</div><div class="meta">' + esc(f.city) + '</div></div>' +
         '<div class="row"><span class="pill s-' + esc(f.status.replace(/\s/g, '')) + '">' + esc(f.status) + '</span>' + (f.myRole === 'admin' ? '<span class="pill admin">Flip Admin</span>' : '') + '</div></div>' +
         '<div class="spread" style="margin-top:10px;align-items:center"><div class="mini" style="flex:1"><div>Purchase<b>' + money(f.purchasePrice, 0) + '</b></div><div>' + (f.status === 'Sold' ? 'Sold For' : 'Projected Sale') + '<b>' + money(f.salePrice, 0) + '</b></div><div>' + (f.status === 'Sold' ? 'Profit' : 'Proj. Profit') + '<b>' + sMoney(x.profit, 0) + '</b></div>' +
-        '<div>Rehab Spent<b>' + money(f.rehabSpent, 0) + '</b></div><div>Cash In<b>' + money(f.cashInvested, 0) + '</b></div><div>Days Held<b>' + (x.needsSaleDate ? '<span class="pill warn">Needs Date</span>' : (x.daysHeld || '—')) + '</b></div></div>' +
+        '<div>Rehab Spent<b>' + money(f.rehabSpent, 0) + '</b></div><div>Cash In<b>' + money(f.cashInvested, 0) + '</b></div><div>Days Held<b>' + (x.needsSaleDate ? (soldYear(f) ? 'Sold ' + soldYear(f) + ' ' : '') + '<span class="pill warn">Needs Date</span>' : (x.daysHeld || '—')) + '</b></div></div>' +
         donut(roi || 0, 1, pct(roi, 0), 'Return On Cash', roi == null ? 'gold' : (roi >= 0 ? 'good' : 'bad'), 96) + '</div></div>';
     }).join('') + '</div>';
   }
@@ -245,7 +247,7 @@
         if (!rows.length) html += '<p class="empty">No open flips.</p>';
       } else {
         html += rows.length ? '<div class="card tblwrap"><table class="t"><thead><tr><th>Property</th><th>Purchased</th><th>Sold</th><th class="r">Purchase</th><th class="r">Sale</th><th class="r">Profit</th><th class="r">ROI On Cash</th><th class="r">Annualized</th></tr></thead><tbody>' +
-          rows.map(function (r) { var f = r.f, x = r.x; return '<tr class="flipcard" data-id="' + esc(f.id) + '"><td><b>' + esc(f.address) + '</b><div class="meta">' + esc(f.city) + '</div></td><td>' + (fmtDate(f.purchaseDate) || '<span class="pill warn">Needs Date</span>') + '</td><td>' + (fmtDate(f.saleDate) || '<span class="pill warn">Needs Date</span>') + '</td><td class="r num">' + money(f.purchasePrice, 0) + '</td><td class="r num">' + money(f.salePrice, 0) + '</td><td class="r num">' + sMoney(x.profit) + '</td><td class="r">' + sPct(x.roiCash) + '</td><td class="r">' + (x.simpleAnnual == null ? '—' : sPct(x.simpleAnnual)) + '</td></tr>'; }).join('') +
+          rows.map(function (r) { var f = r.f, x = r.x; return '<tr class="flipcard" data-id="' + esc(f.id) + '"><td><b>' + esc(f.address) + '</b><div class="meta">' + esc(f.city) + '</div></td><td>' + (fmtDate(f.purchaseDate) || '<span class="pill warn">Needs Date</span>') + '</td><td>' + soldCell(f) + '</td><td class="r num">' + money(f.purchasePrice, 0) + '</td><td class="r num">' + money(f.salePrice, 0) + '</td><td class="r num">' + sMoney(x.profit) + '</td><td class="r">' + sPct(x.roiCash) + '</td><td class="r">' + (x.simpleAnnual == null ? '—' : sPct(x.simpleAnnual)) + '</td></tr>'; }).join('') +
           '</tbody></table></div>' : '<p class="empty">No sold flips yet.</p>';
       }
       $app.innerHTML = html; bindCards(); animate();
@@ -282,7 +284,7 @@
         '<p class="sub2">' + (x.rehabVariance > 0 ? '<span class="neg">' + money(x.rehabVariance) + '</span> over budget' : x.rehabVariance < 0 ? '<span class="pos">' + money(-x.rehabVariance) + '</span> under budget' : 'On budget') + '</p>' +
         '<hr class="sep"><h2>Investors</h2><p class="meta">Capital returned first, then the profit split</p>' +
         (x.investors.length ? '<table class="t"><thead><tr><th>Investor</th><th class="r">Capital</th><th class="r">Split</th><th class="r">Profit Share</th><th class="r">Payout</th></tr></thead><tbody>' + x.investors.map(function (i) { return '<tr><td>' + esc(i.name) + '</td><td class="r num">' + money(i.capital, 0) + '</td><td class="r">' + pct(i.split, 1) + '</td><td class="r num">' + sMoney(i.profitShare, 0) + '</td><td class="r num"><b>' + money(i.distribution, 0) + '</b></td></tr>'; }).join('') + '</tbody></table>' : '<p class="empty">No investors listed.</p>') +
-        '<hr class="sep"><div class="mini"><div>Purchased<b>' + (fmtDate(f.purchaseDate) || '<span class="pill warn">Needs Date</span>') + '</b></div><div>Sold<b>' + (sold ? (fmtDate(f.saleDate) || '<span class="pill warn">Needs Date</span>') : '—') + '</b></div><div>Cash In<b>' + money(f.cashInvested, 0) + '</b></div></div></div></div>';
+        '<hr class="sep"><div class="mini"><div>Purchased<b>' + (fmtDate(f.purchaseDate) || '<span class="pill warn">Needs Date</span>') + '</b></div><div>Sold<b>' + (sold ? soldCell(f) : '—') + '</b></div><div>Cash In<b>' + money(f.cashInvested, 0) + '</b></div></div></div></div>';
       if (f.notes) html += '<div class="label">How These Numbers Were Built</div><div class="card"><p style="margin:0;white-space:pre-wrap" class="sub2">' + esc(f.notes) + '</p></div>';
       html += '<div class="label">Inventory Needs List</div><div id="invlist"></div>';
       if (f.access) {
