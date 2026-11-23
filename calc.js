@@ -86,7 +86,7 @@
     return { rent: r2(inc), expenses: r2(exp), value: r2(value), loanBalance: r2(bal), cashInvested: r2(cash), allIn: r2(allIn), equity: r2(equity), hasIncome: hasIncome,
       monthlyCashFlow: r2(cf), annualCashFlow: r2(cf * 12), cashOnCash: cash > 0 && hasIncome ? cf * 12 / cash : null,
       equityRoi: cash > 0 && value > 0 ? (equity - cash) / cash : null,
-      totalRoi: cash > 0 && value > 0 ? (equity - cash + cfToDate) / cash : null, cashFlowToDate: r2(cfToDate), monthsHeld: months, daysHeld: days };
+      totalRoi: cash > 0 && value > 0 ? (equity - cash + (hasIncome ? cf * 12 : 0)) / cash : null, noi: r2(hasIncome ? cf * 12 : 0), cashFlowToDate: r2(cfToDate), monthsHeld: months, daysHeld: days };
   }
 
   var api = { estimate: estimate, flip: flip, holding: holding, daysBetween: daysBetween, annualize: annualize, n: n };
