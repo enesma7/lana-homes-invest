@@ -320,3 +320,5 @@ details.brk .lines{margin-top:8px}
 .pl-hero.loss .v{background:none;color:#fff}
 .pl-hero.loss .s{color:rgba(255,255,255,.85)}
 @media (max-width:700px){.pl-hero{padding:16px 18px}.pl-hero .v{font-size:38px}}
+.calchero .sughint{font-size:12.5px;color:#9a9a9f;margin-top:6px;min-height:16px}
+@media (max-width:700px){.calchero .ch-in .field.big:last-child .sughint{display:none}}

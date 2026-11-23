@@ -577,7 +577,7 @@
     var html = '<div class="spread"><div><h1>' + (est ? 'Estimate: ' + esc(est.name || est.address) : 'Flip Calculator') + '</h1><p class="lead">' + (est ? 'Saved ' + new Date(est.createdAt).toLocaleDateString() + ' · Auto-deletes ' + new Date(est.expiresAt).toLocaleDateString() + ' (90 days)' + (est.owner && !est.mine ? ' · Created by ' + esc(est.owner.name || est.owner.email) : '') : 'Estimates you save are kept for 90 days, then deleted automatically.') + '</p></div>' +
       (est ? '<a class="btn" href="#/estimates">← Estimates</a>' : '') + '</div>' +
       '<form id="ctop" class="card rule calchero" onsubmit="return false"><div class="ch-in">' + CALC_TOP.map(function (x) {
-        return '<div class="field big"><label>' + x[1] + '</label><div class="dollar"><span>$</span><input data-k="' + x[0] + '" inputmode="decimal" placeholder="0" value="' + esc(inputs[x[0]] == null ? '' : inputs[x[0]]) + '"></div></div>';
+        return '<div class="field big"><label>' + x[1] + '</label><div class="dollar"><span>$</span><input data-k="' + x[0] + '" inputmode="decimal" placeholder="0" value="' + esc(inputs[x[0]] == null ? '' : inputs[x[0]]) + '"></div>' + (x[0] === 'purchasePrice' ? '<div class="sughint" id="maxhint"></div>' : '<div class="sughint">&nbsp;</div>') + '</div>';
       }).join('') + '</div><div class="ch-kpis" id="ckpi"></div></form>' +
       '<div class="grid g2" style="align-items:start;margin-top:22px"><div class="card rule"><form id="cf" onsubmit="return false">';
     CALC_FIELDS.forEach(function (sec) {
@@ -608,7 +608,7 @@
         '<div class="lines">' + ln('Loan / LTV', money(r.loanAmount, 0) + ' · ' + pct(r.ltv)) + ln('Cash To Close', money(r.cashToClose)) + ln('Buying Costs (Net, With Points)', money(r.buyingCosts)) + ln('Rehab (With Contingency)', money(r.rehabUsed)) +
         ln('Loan Interest', money(r.interest)) + ln('Property Taxes' + (i.propertyTaxes === '' ? ' (Auto)' : ''), money(r.taxHold)) + ln('Insurance' + (i.insuranceHold === '' ? ' (Auto)' : ''), money(r.insuranceHold)) + ln('Utilities' + (i.utilities === '' ? ' (Auto)' : ''), money(r.utilitiesHold)) + ln('Holding Costs (Total)', money(r.holdingCosts)) + ln('Selling Costs', money(r.sellingCosts)) + ln('Total Cost', money(r.totalCost), 'tot') +
         ln('Profit', sMoney(r.profit), 'tot') + ln('Cash Invested', money(r.cashInvested)) + ln('Return On Cash', sPct(r.roiCash)) + ln('Return On Total Cost', sPct(r.roiCost)) +
-        ln('Annualized Simple / Compound', r.simpleAnnual == null ? '—' : sPct(r.simpleAnnual) + ' / ' + sPct(r.compoundAnnual)) + ln('Max Offer (80% Of ARV − Rehab)', money(r.maxOffer, 0)) + '</div>' +
+        ln('Annualized Simple / Compound', r.simpleAnnual == null ? '—' : sPct(r.simpleAnnual) + ' / ' + sPct(r.compoundAnnual)) + '</div>' +
         (r.over80 ? '<p class="note bad" style="margin-top:12px">Purchase price is over 80% of the sale price.</p>' : '');
       var bi = r.items.buying, si = r.items.selling, byName = function (list, nm) { return (list.filter(function (x) { return x[0] === nm; })[0] || [0, 0])[1]; };
       var amap = { buyEscrowPct: byName(bi, 'Escrow Fee'), buyTitlePct: byName(bi, 'Title / Lender Policy'), listingPct: byName(si, 'Listing Commission'), buyerPct: byName(si, 'Buyer Commission'), sellEscrowPct: byName(si, 'Escrow Fee'), sellTitlePct: byName(si, 'Owner’s Title Policy'), countyTTper1k: byName(si, 'County Transfer Tax'), cityTTper1k: byName(si, 'City Transfer Tax') };
@@ -624,9 +624,12 @@
         : 'Add a purchase / close date to auto-calculate tax prorations. Until then holding taxes are ' + esc(i.taxRatePct) + '% a year for the days held. Prepaid insurance covers the first 12 months; holding insurance only counts time past that.';
       var ph = { propertyTaxes: r.taxHold, insuranceHold: r.insuranceHold, utilities: r.utilitiesHold, insurancePrepaid: r.insurancePrepaid, taxProration: r.taxProrationBuy, sellTaxProration: r.taxProrationSell, payoffDate: r.saleDate }; document.querySelectorAll('#cf [data-auto]').forEach(function (el) { var k = el.dataset.auto; if (k === 'payoffDate') { el.title = ph.payoffDate ? 'Auto: ' + fmtDate(ph.payoffDate) : ''; return; } var v = ph[k] || 0; el.placeholder = 'Auto: ' + (k === 'taxProration' || k === 'sellTaxProration' ? money(Math.abs(v)) + (v < 0 ? ' credit to you' : v > 0 ? ' you pay' : '') : money(v)); });
       var kp = function (k, v, cls) { return '<div class="ck' + (cls ? ' ' + cls : '') + '"><div class="k">' + k + '</div><div class="v num">' + v + '</div></div>'; };
-      var ratio = C.n(i.salePrice) ? C.n(i.purchasePrice) / C.n(i.salePrice) : null;
+      var ratio = C.n(i.salePrice) && C.n(i.purchasePrice) ? C.n(i.purchasePrice) / C.n(i.salePrice) : null;
       document.getElementById('ckpi').innerHTML = kp('Projected Profit', sMoney(r.profit, 0), r.profit < 0 ? 'bad' : 'good') + kp('Return On Cash', sPct(r.roiCash)) +
-        kp('Purchase / ARV', ratio == null ? '—' : pct(ratio, 1), r.over80 ? 'bad' : '') + kp('Max Offer (80% ARV − Rehab)', money(r.maxOffer, 0));
+        kp('Purchase / ARV', ratio == null ? '—' : pct(ratio, 1), r.over80 ? 'bad' : '') + kp('Total Cost', money(r.totalCost, 0));
+      // Max offer (80% of ARV − rehab) lives in the Purchase Price field as a grayed suggestion, updated live.
+      var sug = C.n(i.salePrice) ? 'Suggested max: ' + money(r.maxOffer, 0) + ' (80% ARV − Rehab)' : 'Suggested max: add the ARV (80% ARV − Rehab)';
+      document.getElementById('maxhint').textContent = sug;
       animate(); return { i: i, r: r };
     };
     ['ctop', 'cf'].forEach(function (id) { var fm = document.getElementById(id); fm.addEventListener('input', paint); fm.addEventListener('change', paint); }); paint();
