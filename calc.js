@@ -77,13 +77,13 @@
     var value = n(h.currentValue), bal = n(h.loanBalance), cash = n(h.cashInvested);
     var allIn = n(h.purchasePrice) + n(h.buyClosingCosts) + n(h.rehabSpent);
     var inc = n(h.monthlyIncome), exp = n(h.monthlyExpenses), cf = inc - exp;
-    var hasIncome = inc !== 0 || exp !== 0;
+    var hasIncome = exp > 0; // cash flow is only known once expenses are entered (rent alone is not cash flow)
     var equity = value - bal;
     var end = h.status === 'Sold' && h.saleDate ? h.saleDate : (today || new Date().toISOString().slice(0, 10));
     var days = h.purchaseDate ? daysBetween(h.purchaseDate, end) : null;
     var months = days == null ? null : Math.max(0, Math.floor(days / 30.4375));
-    var cfToDate = months == null ? 0 : cf * months;
-    return { value: r2(value), loanBalance: r2(bal), cashInvested: r2(cash), allIn: r2(allIn), equity: r2(equity), hasIncome: hasIncome,
+    var cfToDate = months == null || !hasIncome ? 0 : cf * months;
+    return { rent: r2(inc), expenses: r2(exp), value: r2(value), loanBalance: r2(bal), cashInvested: r2(cash), allIn: r2(allIn), equity: r2(equity), hasIncome: hasIncome,
       monthlyCashFlow: r2(cf), annualCashFlow: r2(cf * 12), cashOnCash: cash > 0 && hasIncome ? cf * 12 / cash : null,
       equityRoi: cash > 0 && value > 0 ? (equity - cash) / cash : null,
       totalRoi: cash > 0 && value > 0 ? (equity - cash + cfToDate) / cash : null, cashFlowToDate: r2(cfToDate), monthsHeld: months, daysHeld: days };

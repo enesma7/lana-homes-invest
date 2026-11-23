@@ -17,6 +17,7 @@
   function signed(html, v) { return v > 0 ? '<span class="pos">' + html + '</span>' : (v < 0 ? '<span class="neg">' + html + '</span>' : '<span>' + html + '</span>'); }
   function sMoney(v, dec) { return signed(money(v, dec), v); }
   function sPct(v) { return v == null ? '—' : signed(pct(v), v); }
+  function depositsHeld(f) { var m = /Security deposits held: \$([\d,]+(?:\.\d+)?)/i.exec(f && f.notes || ''); return m ? Number(m[1].replace(/,/g, '')) : 0; }
   function soldYear(f) { var m = /Sold (\d{4})\b/.exec(f && f.datesNote || ''); return m ? m[1] : ''; }
   function soldCell(f) { return fmtDate(f.saleDate) || ((soldYear(f) ? soldYear(f) + ' ' : '') + '<span class="pill warn">Needs Date</span>'); }
   function fmtDate(d) { if (!d) return ''; var p = d.split('-'); return p.length === 3 ? (+p[1]) + '/' + (+p[2]) + '/' + p[0] : d; }
@@ -211,7 +212,7 @@
         var hx = holds.map(function (f) { return C.holding(f); });
         var hs = function (k) { return hx.reduce(function (t, x) { return t + (x[k] || 0); }, 0); };
         html += '<div class="label">Holdings</div><div class="grid g4">' + kpi('Holdings Value', money(hs('value'), 0), holds.length + ' propert' + (holds.length === 1 ? 'y' : 'ies')) +
-          kpi('Equity', sMoney(hs('equity'), 0), 'Value minus loan balances', 'good') + kpi('Monthly Cash Flow', hx.some(function (x) { return x.hasIncome; }) ? sMoney(hs('monthlyCashFlow'), 0) : '<span class="pill warn">Needs Data</span>', 'Income minus expenses') +
+          kpi('Equity', sMoney(hs('equity'), 0), 'Value minus loan balances', 'good') + kpi('Monthly Rent', money(hs('rent'), 0), hx.some(function (x) { return x.hasIncome; }) ? sMoney(hs('monthlyCashFlow'), 0) + ' cash flow' : 'Cash flow needs monthly expenses') +
           kpi('Cash In Holdings', money(hs('cashInvested'), 0), 'Purchase cash plus improvements') + '</div>' + holdingCards(holds);
       }
       $app.innerHTML = html; bindCards(); animate();
@@ -504,7 +505,7 @@
       return '<div class="card flipcard rule" data-id="' + esc(f.id) + '" tabindex="0"><div class="spread"><div><div class="addr">' + esc(f.address) + '</div><div class="meta">' + esc(f.city) + '</div></div>' +
         '<div class="row"><span class="pill">' + esc(f.status) + '</span>' + (f.myRole === 'admin' ? '<span class="pill admin">Property Admin</span>' : '') + '</div></div>' +
         '<div class="spread" style="margin-top:10px;align-items:center"><div class="mini" style="flex:1"><div>Value<b>' + (x.value ? money(x.value, 0) : '<span class="pill warn">Needs Value</span>') + '</b></div><div>Equity<b>' + sMoney(x.equity, 0) + '</b></div>' +
-        '<div>Cash Flow / Mo<b>' + (x.hasIncome ? sMoney(x.monthlyCashFlow, 0) : '<span class="pill warn">Needs Data</span>') + '</b></div><div>Cash In<b>' + money(x.cashInvested, 0) + '</b></div><div>Loan Balance<b>' + money(x.loanBalance, 0) + '</b></div><div>Purchased<b>' + (fmtDate(f.purchaseDate) || '<span class="pill warn">Needs Date</span>') + '</b></div></div>' +
+        '<div>Rent / Mo<b>' + (x.rent ? money(x.rent, 0) : '<span class="pill warn">Needs Data</span>') + '</b></div><div>Cash Flow / Mo<b>' + (x.hasIncome ? sMoney(x.monthlyCashFlow, 0) : '<span class="pill warn">Needs Data</span>') + '</b></div><div>Cash In<b>' + money(x.cashInvested, 0) + '</b></div><div>Loan Balance<b>' + money(x.loanBalance, 0) + '</b></div><div>Purchased<b>' + (fmtDate(f.purchaseDate) || '<span class="pill warn">Needs Date</span>') + '</b></div></div>' +
         donut(x.totalRoi || 0, 1, pct(x.totalRoi, 0), 'Total Return', x.totalRoi == null ? 'gold' : (x.totalRoi >= 0 ? 'good' : 'bad'), 96) + '</div></div>';
     }).join('') + '</div>';
   }
@@ -543,14 +544,14 @@
     if (f.datesNote) html += '<p class="note' + (/Needs Date/.test(f.datesNote) ? ' bad' : '') + '">' + esc(f.datesNote) + '</p>';
     html += '<div class="grid g4" style="margin-top:18px">' +
       kpi('Equity', sMoney(x.equity, 0), (x.value ? money(x.value, 0) + ' value' : 'Needs value') + ' − ' + money(x.loanBalance, 0) + ' loan', x.equity < 0 ? 'bad' : 'good') +
-      kpi('Monthly Cash Flow', x.hasIncome ? sMoney(x.monthlyCashFlow, 0) : '<span class="pill warn">Needs Data</span>', x.hasIncome ? sMoney(x.annualCashFlow, 0) + ' a year' : 'Add rent and monthly expenses') +
+      kpi('Monthly Cash Flow', x.hasIncome ? sMoney(x.monthlyCashFlow, 0) : '<span class="pill warn">Needs Data</span>', x.hasIncome ? sMoney(x.annualCashFlow, 0) + ' a year' : (x.rent ? money(x.rent, 0) + ' rent; add monthly expenses' : 'Add rent and monthly expenses')) +
       kpi('Cash-On-Cash', x.hasIncome ? sPct(x.cashOnCash) : '—', 'Annual cash flow ÷ cash in') +
       kpi('Total Return', sPct(x.totalRoi), '(Equity − cash in + cash flow to date) ÷ cash in') + '</div>';
     html += '<div class="grid g2" style="margin-top:22px"><div class="card rule"><h2>The Numbers</h2><p class="meta">Purchase, financing and what it earns</p><div class="lines">' +
       ln('Purchase Price', money(f.purchasePrice)) + ln('Closing Costs', money(f.buyClosingCosts)) + ln('Improvements Spent', money(f.rehabSpent)) + ln('All-In Cost', money(x.allIn), 'tot') +
       ln('Original Loan' + (f.lender ? ' · ' + esc(f.lender) : ''), money(f.loanAmount)) + ln('Current Loan Balance', money(x.loanBalance)) + ln('Cash Invested', money(x.cashInvested), 'tot') +
       ln('Current Value', x.value ? money(x.value) : '<span class="pill warn">Needs Value</span>') + ln('Equity', sMoney(x.equity), 'tot') +
-      ln('Monthly Income', money(f.monthlyIncome)) + ln('Monthly Expenses', money(f.monthlyExpenses)) + ln('Monthly Cash Flow', sMoney(x.monthlyCashFlow), 'tot') + '</div></div>' +
+      ln('Monthly Rent', x.rent ? money(x.rent) : '<span class="pill warn">Needs Data</span>') + ln('Monthly Expenses', x.expenses ? money(x.expenses) : '<span class="pill warn">Needs Data</span>') + ln('Monthly Cash Flow', x.hasIncome ? sMoney(x.monthlyCashFlow) : '<span class="pill warn">Needs Data</span>', 'tot') + (depositsHeld(f) ? ln('Security Deposits Held (Owed To Tenants)', money(depositsHeld(f))) : '') + '</div></div>' +
       '<div class="card rule"><h2>Return</h2><p class="meta">Equity gain plus cash flow on the cash you put in</p><div style="display:flex;justify-content:center;gap:18px;margin-top:10px">' +
       donut(x.equityRoi || 0, 1, pct(x.equityRoi, 0), 'Equity Gain', x.equityRoi == null ? 'gold' : (x.equityRoi >= 0 ? 'good' : 'bad')) + donut(x.cashOnCash || 0, 0.2, x.hasIncome ? pct(x.cashOnCash, 1) : '—', 'Cash-On-Cash', 'gold') + '</div>' +
       '<hr class="sep"><div class="mini"><div>Purchased<b>' + (fmtDate(f.purchaseDate) || '<span class="pill warn">Needs Date</span>') + '</b></div><div>Months Held<b>' + (x.monthsHeld == null ? '—' : x.monthsHeld) + '</b></div><div>Value Vs All-In<b>' + sMoney(x.value ? x.value - x.allIn : 0, 0) + '</b></div></div></div></div>';
