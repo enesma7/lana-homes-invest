@@ -513,6 +513,7 @@
         var invTxt = document.getElementById('invs').value;
         // Only send investors when edited, so the stored Purchase To Payout breakdown is kept.
         if (isNew || invTxt.trim() !== inv.trim()) body.investors = invTxt.split('\n').map(function (l) { var p = l.split('|').map(function (s) { return s.trim(); }); return p[0] ? { name: p[0], capital: C.n(p[1]), split: C.n(p[2]) / 100 } : null; }).filter(Boolean);
+        if (body.investors) { var pm = (f.investors || []).filter(function (i) { return i.payout; })[0]; if (pm) body.investors.push(pm); }
         var nst = document.getElementById('nst'); if (nst) body.status = nst.value;
         if (isNew) body.kind = hold ? 'holding' : 'flip';
         var p = isNew ? api('createFlip', { flip: body }) : api('updateFlip', { id: f.id, flip: body });
