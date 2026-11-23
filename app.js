@@ -195,10 +195,9 @@
     document.body.classList.toggle('auth', !S.user);
     if (!S.user) { tabs.hidden = true; who.innerHTML = ''; mb.hidden = true; mb.innerHTML = ''; return; }
     var hm = mode() === 'holdings', items;
-    if (hm) items = [['#/', 'Dashboard'], ['#/holdings', 'Holdings'], ['#/expenses', 'Expenses'], ['#/resources', 'Resources']];
+    if (hm) items = [['#/', 'Dashboard'], ['#/holdings', 'Holdings'], ['#/resources', 'Resources']];
     else {
       items = [['#/', 'Dashboard'], ['#/flips', 'Flips'], ['#/calculator', 'Calculator'], ['#/estimates', isOwner() ? 'All Estimates' : 'My Estimates'], ['#/archive', 'Archive'], ['#/resources', 'Resources']];
-      if (isOwner()) items.push(['#/expenses', 'Expenses']);
     }
     if (isOwner()) {
       mb.innerHTML = '<div class="toggle' + (hm ? ' h' : '') + '" role="tablist" aria-label="Flips or Holdings"><span class="knob"></span><button role="tab" data-m="flips" aria-selected="' + !hm + '" class="' + (hm ? '' : 'on') + '">Flips</button><button role="tab" data-m="holdings" aria-selected="' + hm + '" class="' + (hm ? 'on' : '') + '">Holdings</button></div>';
@@ -209,7 +208,7 @@
     tabs.hidden = false;
     var nm = S.user.name || S.user.email, ini = nm.split(/[\s@.]+/).filter(Boolean).slice(0, 2).map(function (w) { return w[0].toUpperCase(); }).join('');
     who.innerHTML = '<button class="avatar" id="av" aria-haspopup="menu" aria-expanded="false" aria-label="Account">' + esc(ini) + '</button>' +
-      '<div class="menu" id="acct" role="menu" hidden><div class="mh"><b>' + esc(nm) + '</b><span>' + esc(S.user.email) + '</span><div><span class="pill' + (isOwner() ? ' admin' : '') + '">' + (isOwner() ? 'Owner' : 'Member') + '</span></div></div>' + (isOwner() ? '<button role="menuitem" id="adm">' + ICONS.Admin + 'Admin</button>' : '') + '<button role="menuitem" id="lo">Sign Out</button></div>';
+      '<div class="menu" id="acct" role="menu" hidden><div class="mh"><b>' + esc(nm) + '</b><span>' + esc(S.user.email) + '</span><div><span class="pill' + (isOwner() ? ' admin' : '') + '">' + (isOwner() ? 'Owner' : 'Member') + '</span></div></div>' + (isOwner() ? '<button role="menuitem" id="mex">' + ICONS.Expenses + 'Expenses</button><button role="menuitem" id="adm">' + ICONS.Admin + 'Admin</button>' : '') + '<button role="menuitem" id="lo">Sign Out</button></div>';
     var av = document.getElementById('av'), mn = document.getElementById('acct');
     av.onclick = function (e) { e.stopPropagation(); mn.hidden = !mn.hidden; av.setAttribute('aria-expanded', String(!mn.hidden)); };
     if (!renderChrome.bound) {
@@ -220,6 +219,7 @@
       window.addEventListener('hashchange', function () { closeMenu(); });
     }
     requestAnimationFrame(function () { var t = document.querySelector('.top'); if (t) document.documentElement.style.setProperty('--toph', t.offsetHeight + 'px'); });
+    var mex = document.getElementById('mex'); if (mex) mex.onclick = function () { mn.hidden = true; av.setAttribute('aria-expanded', 'false'); location.hash = '#/expenses'; };
     var adm = document.getElementById('adm'); if (adm) adm.onclick = function () { mn.hidden = true; av.setAttribute('aria-expanded', 'false'); setMode('flips'); location.hash = '#/admin'; };
     document.getElementById('lo').onclick = function () { mn.hidden = true; confirmBox('Sign Out', '<p>Also forget this device? You’ll need an emailed code next time.</p>', 'Sign Out And Forget', function () { logout(true); }, 'Just Sign Out', function () { logout(false); }); };
   }
@@ -425,6 +425,7 @@
         '<hr class="sep"><h2>Investors</h2><p class="meta">Capital returned first, then the profit split</p>' +
         (x.investors.length ? '<table class="t"><thead><tr><th>Investor</th><th class="r">Capital</th><th class="r">Split</th><th class="r">Profit Share</th><th class="r">Payout</th></tr></thead><tbody>' + x.investors.map(function (i) { return '<tr><td>' + esc(i.name) + '</td><td class="r num">' + money(i.capital, 0) + '</td><td class="r">' + pct(i.split, 1) + '</td><td class="r num">' + sMoney(i.profitShare, 0) + '</td><td class="r num"><b>' + money(i.distribution, 0) + '</b></td></tr>'; }).join('') + '</tbody></table>' : '<p class="empty">No investors listed.</p>') +
         '<hr class="sep"><div class="mini"><div>Purchased<b>' + (fmtDate(f.purchaseDate) || '<span class="pill warn">Needs Date</span>') + '</b></div><div>Sold<b>' + (sold ? soldCell(f) : '—') + '</b></div><div>Cash In<b>' + money(f.cashInvested, 0) + '</b></div></div></div></div>';
+      if (own) html += '<div class="label">Expenses</div><div id="proex"></div>';
       html += '<div class="label">Inventory Needs List</div><div id="invlist"></div>';
       if (f.access) {
         html += '<div class="label">Who Can See This Flip</div><div class="card tblwrap"><table class="t"><thead><tr><th>User</th><th>Role</th><th>Invited</th><th>Last Sign-In</th><th></th></tr></thead><tbody>' +
@@ -436,7 +437,7 @@
       }
       if (f.estimates && f.estimates.length) html += '<div class="label">Estimates Tied To This Flip</div>' + estTable(f.estimates);
       $app.innerHTML = html; animate();
-      renderInventory('flip', f.id, f.inventory || [], can);
+      renderInventory('flip', f.id, f.inventory || [], can); propExpenses(f);
       var st = document.getElementById('st');
       if (st) st.onchange = function () {
         var s = st.value;
@@ -692,10 +693,11 @@
       '<div class="card rule"><h2>Return</h2><p class="meta">Equity gain plus cash flow on the cash you put in</p><div style="display:flex;justify-content:center;gap:18px;margin-top:10px">' +
       donut(x.equityRoi || 0, 1, pct(x.equityRoi, 0), 'Equity Gain', x.equityRoi == null ? 'gold' : (x.equityRoi >= 0 ? 'good' : 'bad')) + donut(x.cashOnCash || 0, 0.2, x.hasIncome ? pct(x.cashOnCash, 1) : '—', 'Cash-On-Cash', 'gold') + '</div>' +
       '<hr class="sep"><div class="mini"><div>Purchased<b>' + (fmtDate(f.purchaseDate) || '<span class="pill warn">Needs Date</span>') + '</b></div><div>Months Held<b>' + (x.monthsHeld == null ? '—' : x.monthsHeld) + '</b></div><div>Value Vs All-In<b>' + sMoney(x.value ? x.value - x.allIn : 0, 0) + '</b></div></div></div></div>';
+    if (isOwner()) html += '<div class="label">Expenses</div><div id="proex"></div>';
     html += '<div class="label">Inventory Needs List</div><div id="invlist"></div>';
     if (f.estimates && f.estimates.length) html += '<div class="label">Estimates Tied To This Holding</div>' + estTable(f.estimates);
     $app.innerHTML = html; animate();
-    renderInventory('flip', f.id, f.inventory || [], can);
+    renderInventory('flip', f.id, f.inventory || [], can); propExpenses(f);
     var st = document.getElementById('st');
     if (st) st.onchange = function () { api('setStatus', { id: f.id, status: st.value }).then(function () { toast('Status set to ' + st.value + '.'); S.flips = null; viewFlip(f.id); }).catch(function (e) { fail(e); st.value = f.status; }); };
     var ed = document.getElementById('ed'); if (ed) ed.onclick = function () { editFlip(f); };
@@ -708,8 +710,6 @@
   function exFiltered() {
     var f = EX.f, q = f.q.toLowerCase();
     return EX.items.filter(function (e) {
-      if (f.link === 'general' && !(e.linkType === 'general' || !e.linkId)) return false;
-      if (f.link && f.link !== 'general' && e.linkId !== f.link) return false;
       if (f.cat && e.category !== f.cat) return false;
       if (f.from && (!e.date || e.date < f.from)) return false;
       if (f.to && (!e.date || e.date > f.to)) return false;
@@ -717,15 +717,13 @@
       return true;
     }).sort(function (a, b) { return (b.date || '0') < (a.date || '0') ? -1 : 1; });
   }
+  function isGeneralExp(e) { return !e.linkId || !e.linkType || e.linkType === 'general' || e.linkType === 'llc'; }
   function viewExpenses() {
     loading();
     Promise.all([api('listExpenses'), loadFlips(true)]).then(function (res) {
-      var props = res[1], kindOf = {}; props.forEach(function (p) { kindOf[p.id] = isHolding(p) ? 'holding' : 'flip'; });
-      var want = mode() === 'holdings' ? 'holding' : 'flip';
-      // Each mode shows its own properties' expenses plus General LLC entries.
-      EX.items = res[0].items.filter(function (e) { return e.linkType === 'general' || !e.linkId || (kindOf[e.linkId] || e.linkType) === want; });
-      EX.cats = res[0].categories; EX.props = props.filter(inMode);
-      if (EX.f.link && EX.f.link !== 'general' && !EX.props.some(function (p) { return p.id === EX.f.link; })) EX.f.link = '';
+      // The ledger page holds only General LLC (misc) expenses; property expenses live on each flip or holding.
+      EX.items = res[0].items.filter(isGeneralExp);
+      EX.cats = res[0].categories; EX.props = res[1]; EX.after = viewExpenses;
       drawExpenses();
     }).catch(fail);
   }
@@ -736,33 +734,56 @@
     var byLink = {}; rows.forEach(function (e) { var k = exLinkLabel(e); byLink[k] = (byLink[k] || 0) + e.amount; });
     var need = rows.filter(function (e) { return /Needs (Date|Amount)/.test(e.notes); }).length;
     var opt = function (v, l, cur) { return '<option value="' + esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(l) + '</option>'; };
-    var html = '<div class="spread"><div><h1>' + (mode() === 'holdings' ? 'Holdings Expenses' : 'Flips Expenses') + '</h1><p class="lead">' + (mode() === 'holdings' ? 'Holdings' : 'Flips') + ' expenses plus General LLC. Only you can see this.</p></div><div class="row"><button class="btn" id="csv">Export CSV</button><button class="btn gold" id="nx">Add Expense</button></div></div>';
+    var html = '<div class="spread"><div><h1>LLC Expenses</h1><p class="lead">General and misc LANA HOMES LLC expenses not tied to a flip or holding. Property expenses live on each property. Only you can see this.</p></div><div class="row"><button class="btn" id="csv">Export CSV</button><button class="btn gold" id="nx">Add Expense</button></div></div>';
     html += '<div class="card"><div class="calcgrid">' +
-      '<div class="field"><label>Property</label><select id="xl">' + opt('', 'All', f.link) + opt('general', 'General LLC', f.link) + EX.props.map(function (p) { return opt(p.id, (isHolding(p) ? 'Holding · ' : 'Flip · ') + p.address, f.link); }).join('') + '</select></div>' +
       '<div class="field"><label>Category</label><select id="xc">' + opt('', 'All', f.cat) + EX.cats.map(function (c) { return opt(c, c, f.cat); }).join('') + '</select></div>' +
       '<div class="field"><label>From</label><input type="date" id="xf" value="' + esc(f.from) + '"></div><div class="field"><label>To</label><input type="date" id="xt" value="' + esc(f.to) + '"></div>' +
       '<div class="field"><label>Search</label><input id="xq" value="' + esc(f.q) + '" placeholder="Payee, notes, method"></div></div></div>';
     html += '<div class="grid g4" style="margin-top:22px">' + kpi('Total', money(total), rows.length + ' entr' + (rows.length === 1 ? 'y' : 'ies')) +
-      kpi('General LLC', money(byLink['General LLC'] || 0), 'Not tied to a property') + kpi('Tied To Properties', money(total - (byLink['General LLC'] || 0)), mode() === 'holdings' ? 'Holdings' : 'Flips') +
+      kpi('This Year', money(rows.filter(function (e) { return (e.date || '').slice(0, 4) === todayISO().slice(0, 4); }).reduce(function (s, e) { return s + e.amount; }, 0)), todayISO().slice(0, 4) + ' entries') + kpi('Categories', String(Object.keys(byCat).length), 'In this view') +
       kpi('Needs Info', String(need), 'Missing a date or amount', need ? 'bad' : '') + '</div>';
     html += '<div class="grid g2" style="margin-top:22px"><div class="card"><h2>By Category</h2><div class="lines">' + Object.keys(byCat).sort(function (a, b) { return byCat[b] - byCat[a]; }).map(function (k) { return '<div class="ln"><span>' + esc(k) + '</span><span class="num">' + money(byCat[k]) + '</span></div>'; }).join('') + '</div></div>' +
-      '<div class="card"><h2>By Property</h2><div class="lines">' + Object.keys(byLink).sort(function (a, b) { return byLink[b] - byLink[a]; }).map(function (k) { return '<div class="ln"><span>' + esc(k) + '</span><span class="num">' + money(byLink[k]) + '</span></div>'; }).join('') + '</div></div></div>';
-    html += '<div class="label">Entries</div><div class="card tblwrap"><table class="t"><thead><tr><th>Date</th><th>Payee</th><th>Category</th><th>Property</th><th>Method</th><th class="r">Amount</th><th>Receipt</th><th></th></tr></thead><tbody>' +
+      '<div class="card"><h2>Top Categories</h2>' + hbars(Object.keys(byCat).sort(function (a, b) { return byCat[b] - byCat[a]; }).slice(0, 6).map(function (k) { return { label: k, value: byCat[k], display: money(byCat[k], 0) }; })) + '</div></div>';
+    html += '<div class="label">Entries</div><div class="card tblwrap"><table class="t"><thead><tr><th>Date</th><th>Payee</th><th>Category</th><th>Method</th><th class="r">Amount</th><th>Receipt</th><th></th></tr></thead><tbody>' +
       (rows.length ? rows.map(function (e) {
-        return '<tr><td>' + (fmtDate(e.date) || '<span class="pill warn">Needs Date</span>') + '</td><td><b>' + esc(e.payee) + '</b>' + (e.notes ? '<div class="meta">' + esc(e.notes) + '</div>' : '') + '</td><td>' + esc(e.category) + '</td><td>' + esc(exLinkLabel(e)) + '</td><td class="meta">' + esc(e.method) + '</td>' +
+        return '<tr><td>' + (fmtDate(e.date) || '<span class="pill warn">Needs Date</span>') + '</td><td><b>' + esc(e.payee) + '</b>' + (e.notes ? '<div class="meta">' + esc(e.notes) + '</div>' : '') + '</td><td>' + esc(e.category) + '</td><td class="meta">' + esc(e.method) + '</td>' +
           '<td class="r num">' + money(e.amount) + '</td><td>' + (e.receiptUrl ? '<a href="' + esc(e.receiptUrl) + '" target="_blank" rel="noopener">View</a>' : '<span class="meta">—</span>') + '</td>' +
           '<td class="r"><button class="btn sm" data-xe="' + esc(e.id) + '">Edit</button> <button class="btn sm danger" data-xd="' + esc(e.id) + '">Delete</button></td></tr>';
-      }).join('') : '<tr><td colspan="8" class="empty">No expenses match.</td></tr>') + '</tbody></table></div>';
+      }).join('') : '<tr><td colspan="7" class="empty">No expenses match.</td></tr>') + '</tbody></table></div>';
     $app.innerHTML = html;
     var bindF = function (id, k) { var el = document.getElementById(id); el.onchange = function () { EX.f[k] = el.value; drawExpenses(); }; };
-    bindF('xl', 'link'); bindF('xc', 'cat'); bindF('xf', 'from'); bindF('xt', 'to');
+    bindF('xc', 'cat'); bindF('xf', 'from'); bindF('xt', 'to');
     var xq = document.getElementById('xq'); xq.onchange = function () { EX.f.q = xq.value; drawExpenses(); };
     document.getElementById('nx').onclick = function () { editExpense(null); };
     document.getElementById('csv').onclick = function () { exportCsv(rows); };
     document.querySelectorAll('[data-xe]').forEach(function (b) { b.onclick = function () { editExpense(EX.items.filter(function (e) { return e.id === b.dataset.xe; })[0]); }; });
-    document.querySelectorAll('[data-xd]').forEach(function (b) { b.onclick = function () { confirmBox('Delete Expense', '<p>Remove this entry from the ledger? Its receipt stays in Drive.</p>', 'Delete', function () { api('deleteExpense', { id: b.dataset.xd }).then(function () { toast('Deleted.'); viewExpenses(); }).catch(fail); }); }; });
+    document.querySelectorAll('[data-xd]').forEach(function (b) { b.onclick = function () { confirmBox('Delete Expense', '<p>Remove this entry from the ledger? Its receipt stays in Drive.</p>', 'Delete', function () { api('deleteExpense', { id: b.dataset.xd }).then(function () { toast('Deleted.'); (EX.after || viewExpenses)(); }).catch(fail); }); }; });
   }
   function csvCell(v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+  // Expenses tied to one flip or holding (owner only; the server rejects everyone else).
+  function propExpenses(f) {
+    var host = document.getElementById('proex'); if (!host || !isOwner()) return;
+    host.innerHTML = '<div class="loading">Loading…</div>';
+    Promise.all([api('listExpenses'), loadFlips()]).then(function (res) {
+      EX.cats = res[0].categories; EX.props = res[1] || []; EX.after = function () { propExpenses(f); };
+      var rows = res[0].items.filter(function (e) { return e.linkId === f.id; }).sort(function (a, b) { return (b.date || '0') < (a.date || '0') ? -1 : 1; });
+      var total = rows.reduce(function (t, e) { return t + e.amount; }, 0), byCat = {};
+      rows.forEach(function (e) { byCat[e.category || 'Other'] = (byCat[e.category || 'Other'] || 0) + e.amount; });
+      var cats = Object.keys(byCat).sort(function (a, b) { return byCat[b] - byCat[a]; }).slice(0, 3).map(function (k) { return esc(k) + ' ' + money(byCat[k], 0); }).join(' · ');
+      host.innerHTML = '<div class="card tblwrap"><div class="spread" style="padding:16px 18px 14px;align-items:center"><div><div class="kpi"><div class="k">Total Expenses</div><div class="v" style="font-size:24px;margin-top:6px">' + money(total) + '</div><div class="meta">' + rows.length + ' entr' + (rows.length === 1 ? 'y' : 'ies') + (cats ? ' · ' + cats : '') + '</div></div></div>' +
+        '<div class="row"><button class="btn sm" id="pxcsv">Export CSV</button><button class="btn sm gold" id="pxadd">Add Expense</button></div></div>' +
+        '<table class="t"><thead><tr><th>Date</th><th>Payee</th><th>Category</th><th>Method</th><th class="r">Amount</th><th>Receipt</th><th></th></tr></thead><tbody>' +
+        (rows.length ? rows.map(function (e) {
+          return '<tr><td>' + (fmtDate(e.date) || '<span class="pill warn">Needs Date</span>') + '</td><td><b>' + esc(e.payee) + '</b>' + (e.notes ? '<div class="meta">' + esc(e.notes) + '</div>' : '') + '</td><td>' + esc(e.category) + '</td><td class="meta">' + esc(e.method) + '</td>' +
+            '<td class="r num">' + money(e.amount) + '</td><td>' + (e.receiptUrl ? '<a href="' + esc(e.receiptUrl) + '" target="_blank" rel="noopener">View</a>' : '<span class="meta">—</span>') + '</td>' +
+            '<td class="r"><button class="btn sm" data-xe="' + esc(e.id) + '">Edit</button> <button class="btn sm danger" data-xd="' + esc(e.id) + '">Delete</button></td></tr>';
+        }).join('') : '<tr><td colspan="7" class="empty">No expenses on this property yet.</td></tr>') + '</tbody></table></div>';
+      document.getElementById('pxadd').onclick = function () { editExpense(null, f); };
+      document.getElementById('pxcsv').onclick = function () { exportCsv(rows); };
+      host.querySelectorAll('[data-xe]').forEach(function (b) { b.onclick = function () { editExpense(rows.filter(function (e) { return e.id === b.dataset.xe; })[0]); }; });
+      host.querySelectorAll('[data-xd]').forEach(function (b) { b.onclick = function () { confirmBox('Delete Expense', '<p>Remove this entry from the ledger? Its receipt stays in Drive.</p>', 'Delete', function () { api('deleteExpense', { id: b.dataset.xd }).then(function () { toast('Deleted.'); propExpenses(f); }).catch(fail); }); }; });
+    }).catch(function (e) { host.innerHTML = '<p class="empty">' + esc(e.message || 'Could not load expenses.') + '</p>'; });
+  }
   function exportCsv(rows) {
     var head = ['Date', 'Payee', 'Category', 'Amount', 'Method', 'Property', 'Notes', 'Receipt'];
     var lines = [head.join(',')].concat(rows.map(function (e) { return [e.date, e.payee, e.category, e.amount.toFixed(2), e.method, exLinkLabel(e), e.notes, e.receiptUrl].map(csvCell).join(','); }));
@@ -770,8 +791,8 @@
     var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'LANA HOMES Expenses ' + todayISO() + '.csv'; document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
   }
   function readB64(file) { return new Promise(function (ok, no) { var r = new FileReader(); r.onload = function () { ok(String(r.result).split(',')[1] || ''); }; r.onerror = no; r.readAsDataURL(file); }); }
-  function editExpense(e) {
-    var isNew = !e; e = e || { date: todayISO(), linkType: 'general', linkId: '', category: '', amount: '', method: 'LLC Card' };
+  function editExpense(e, prop) {
+    var isNew = !e; e = e || { date: todayISO(), linkType: prop ? (isHolding(prop) ? 'holding' : 'flip') : 'general', linkId: prop ? prop.id : '', category: '', amount: '', method: 'LLC Card' };
     var cur = e.linkType === 'general' || !e.linkId ? 'general' : e.linkId;
     modal('<h2>' + (isNew ? 'Add Expense' : 'Edit Expense') + '</h2><div class="calcgrid">' +
       '<div class="field"><label>Date</label><input type="date" id="ed1" value="' + esc(e.date) + '"></div><div class="field"><label>Payee</label><input id="ed2" value="' + esc(e.payee || '') + '"></div>' +
@@ -792,7 +813,7 @@
         var file = document.getElementById('ed8').files[0];
         var up = file ? (file.size > 10 * 1024 * 1024 ? Promise.reject(new Error('Receipts must be under 10 MB.')) : readB64(file).then(function (d) { return api('uploadReceipt', { name: file.name, mime: file.type, data: d }); })) : Promise.resolve(null);
         up.then(function (r) { if (r) { body.receiptId = r.receiptId; body.receiptName = r.receiptName; } return api('saveExpense', { expense: body }); })
-          .then(function () { closeModal(); toast('Saved.'); viewExpenses(); }).catch(fail).then(function () { b.disabled = false; });
+          .then(function () { closeModal(); toast('Saved.'); (EX.after || viewExpenses)(); }).catch(fail).then(function () { b.disabled = false; });
       };
     });
   }
