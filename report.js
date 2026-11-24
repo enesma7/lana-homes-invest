@@ -85,12 +85,22 @@
     self.table = function (head, body, opts) {
       opts = opts || {};
       doc.autoTable(Object.assign({
-        startY: self.y, head: head ? [head.map(t)] : undefined, body: body.map(function (r) { return r.map(function (c) { return c && typeof c === 'object' ? Object.assign({}, c, { content: t(c.content) }) : t(c); }); }),
+        startY: self.y, head: head ? [head.map(t)] : undefined, body: body.map(function (r) { return r.map(function (c) {
+          if (c && typeof c === 'object' && c.note) return Object.assign({}, c, { content: t(c.content) + '\n' + t(c.note), _label: t(c.content), _note: t(c.note) });
+          return c && typeof c === 'object' ? Object.assign({}, c, { content: t(c.content) }) : t(c); }); }),
         margin: { left: M, right: M, top: 104, bottom: 50 }, theme: 'plain',
         styles: { font: 'helvetica', fontSize: 9, textColor: INK, cellPadding: { top: 4, bottom: 4, left: 6, right: 6 }, lineColor: LINE, lineWidth: { bottom: 0.5 } },
         headStyles: { fillColor: BLACK, textColor: GOLD1, fontStyle: 'bold', fontSize: 8, lineWidth: 0 },
         alternateRowStyles: { fillColor: WHITE },
         didParseCell: function (d) { var cs = (opts.columnStyles || {})[d.column.index]; if (d.section === 'head' && cs && cs.halign) d.cell.styles.halign = cs.halign; },
+        // Notes beside a number print gray and smaller under their label (height is reserved by the combined text).
+        willDrawCell: function (d) { var r = d.cell.raw; if (r && r._note) { var w = d.cell.width - d.cell.padding('left') - d.cell.padding('right'); d.cell._lab = doc.splitTextToSize(r._label, w); d.cell.text = d.cell._lab; } },
+        didDrawCell: function (d) {
+          var r = d.cell.raw; if (!(r && r._note)) return;
+          var fs = d.cell.styles.fontSize, lh = fs * 1.15, w = d.cell.width - d.cell.padding('left') - d.cell.padding('right');
+          doc.setFont('helvetica', 'normal'); doc.setFontSize(fs - 0.5); doc.setTextColor.apply(doc, MUTED);
+          doc.text(doc.splitTextToSize(r._note, w), d.cell.x + d.cell.padding('left'), d.cell.y + d.cell.padding('top') + (d.cell._lab || []).length * lh + fs * 0.85);
+        },
         willDrawPage: function () { if (!headered[doc.internal.getCurrentPageInfo().pageNumber]) header(); }
       }, opts));
       self.y = doc.lastAutoTable.finalY + 16;
@@ -122,16 +132,15 @@
     var total = 0, by = {}; rows.forEach(function (e) { total += n(e.amount); var k = e.payer || 'Not recorded'; by[k] = (by[k] || 0) + n(e.amount); });
     R.lines(Object.keys(by).sort(function (a, b) { return by[b] - by[a]; }).map(function (k) { return ['Paid by ' + k, money(by[k])]; }).concat([['Total (' + rows.length + ' entries)', money(total), true]]));
     R.table(['Date', 'Payee', 'Category', 'Paid By', 'Method', 'Amount'], rows.map(function (e) {
-      return [e.date ? fdate(e.date) : (/Projected/.test(e.notes || '') ? 'At sale' : '-'), e.payee + (e.note ? '\n' + e.note : ''), e.category || '', e.payer || '-', e.method || '', { content: money(e.amount), styles: { halign: 'right' } }];
+      return [e.date ? fdate(e.date) : (e.atSale ? 'At sale' : '-'), e.payee, e.category || '', e.payer || '-', e.method || '', { content: money(e.amount), styles: { halign: 'right' } }];
     }), { styles: { fontSize: 7.5, textColor: INK, cellPadding: 3, lineColor: LINE, lineWidth: { bottom: 0.4 } }, columnStyles: { 0: { cellWidth: 52 }, 2: { cellWidth: 74 }, 3: { cellWidth: 70 }, 4: { cellWidth: 58 }, 5: { cellWidth: 62, halign: 'right' } } });
   }
   function payoutSection(R, p) {
     if (!p) return;
     R.section(p.title || 'Purchase To Payout');
-    var blk = function (title, rows, tot) { if (!rows || !rows.length) return; R.table([title, ''], rows.map(function (r) { return [r[0] + (r[2] ? '\n' + r[2] : ''), { content: money(r[1]), styles: { halign: 'right' } }]; }).concat(tot ? [[{ content: tot[0], styles: { fontStyle: 'bold', textColor: BLACK } }, { content: money(tot[1]), styles: { halign: 'right', fontStyle: 'bold', textColor: BLACK } }]] : []), { columnStyles: { 1: { cellWidth: 150 } } }); };
+    var blk = function (title, rows, tot) { if (!rows || !rows.length) return; R.table([title, ''], rows.map(function (r) { return [r[0], { content: money(r[1]), styles: { halign: 'right', fontStyle: 'bold' } }]; }).concat(tot ? [[{ content: tot[0], styles: { fontStyle: 'bold', textColor: BLACK } }, { content: money(tot[1]), styles: { halign: 'right', fontStyle: 'bold', textColor: BLACK } }]] : []), { columnStyles: { 1: { cellWidth: 150 } } }); };
     blk('At Purchase', p.purchase, p.purchaseTotal); blk('Cash Invested By Partner', p.capital, p.capitalTotal);
     blk(p.saleLabel || 'At Sale Closing', p.sale, p.saleTotal); blk(p.paidLabel || 'Paid Out To', p.paid, p.paidTotal);
-    if (p.source) R.note('Source: ' + p.source);
   }
 
   function flip(d) {
@@ -145,11 +154,11 @@
     if (n(f.adjustments)) rows.push([f.adjustmentsLabel || 'Credits', '-' + money(f.adjustments)]);
     rows.push(['Total Cost', money(x.totalCost), true], [sold ? 'Sale Price' : 'Projected Sale Price', money(f.salePrice), true], [sold ? 'Profit' : 'Projected Profit', money(x.profit), true, x.profit < 0 ? 'bad' : '']);
     R.lines(rows);
-    R.note('Purchased ' + (fdate(f.purchaseDate) || '(needs date)') + (sold ? ' · Sold ' + (fdate(f.saleDate) || '(needs date)') : '') + (f.datesNote ? ' · ' + f.datesNote : ''));
+    R.note('Purchased ' + (fdate(f.purchaseDate) || '(needs date)') + (sold ? ' · Sold ' + (fdate(f.saleDate) || '(needs date)') : '') + '');
     if (x.investors && x.investors.length) { R.section('Investors'); R.table(['Investor', 'Capital', 'Split', 'Profit Share', 'Payout'], x.investors.map(function (i) { return [i.name, money(i.capital, 0), pct(i.split, 1), money(i.profitShare, 0), money(i.distribution, 0)]; }), { columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right', fontStyle: 'bold' } } }); }
     payoutSection(R, x.payout);
     expensesSection(R, d.expenses);
-    if (f.notes) { R.section('Notes'); R.note(f.notes); }
+
     return R.finish();
   }
   function holding(d) {
@@ -165,7 +174,7 @@
     R.lines(rows);
     R.note('Purchased ' + (fdate(f.purchaseDate) || '(needs date)') + (x.monthsHeld != null ? ' · ' + x.monthsHeld + ' months held' : ''));
     expensesSection(R, d.expenses);
-    if (f.notes) { R.section('Notes'); R.note(f.notes); }
+
     return R.finish();
   }
   function estimate(d) {

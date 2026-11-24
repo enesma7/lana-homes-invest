@@ -103,8 +103,133 @@
     return out;
   }
 
-  /** A saved flip's numbers (stored line items) → totals, ROI, hold, investor distributions. */
+  /* LEDGER-BEGIN (shared with backend Code.gs; keep identical) */
+  /** Expense ledger: every number on a flip or holding is derived from its expense entries.
+      phase: Buying | Rehab | Holding | Selling | After Sale (in the deal P&L) · Operating | Excluded (not in the deal P&L).
+      atSale: paid out of the sale proceeds through escrow (projected until the sale closes), so nobody's capital. */
+  var LEDGER_PHASES = ['Buying', 'Rehab', 'Holding', 'Selling', 'After Sale', 'Operating', 'Excluded'];
+  var LEDGER_DEAL = ['Buying', 'Rehab', 'Holding', 'Selling', 'After Sale'];
+  var LEDGER_PB = /^Paid by:\s*([^·]+?)\s*(?:·\s*|$)/;
+  function ledgerNum(v) { var x = Number(String(v == null ? '' : v).replace(/[$,\s]/g, '')); return isFinite(x) ? x : 0; }
+  function ledgerPayer(e) { if (e.paidBy) return String(e.paidBy).trim(); var m = LEDGER_PB.exec(e.notes || ''); return m ? m[1].trim() : ''; }
+  function ledgerAtSale(e) {
+    var a = String(e.atSale == null ? '' : e.atSale).toLowerCase();
+    if (a === '1' || a === 'true' || a === 'yes') return true;
+    if (a === '0' || a === 'false' || a === 'no') return false;
+    return /at sale|sale proceeds/i.test(ledgerPayer(e)) || /(^|·)\s*(Projected|At Sale)\s*(·|$)/i.test(String(e.notes || ''));
+  }
+  function ledgerPhase(e) {
+    if (LEDGER_PHASES.indexOf(e.phase) >= 0) return e.phase;
+    var notes = String(e.notes || ''), payee = String(e.payee || ''), cat = String(e.category || '');
+    if (/Not in the (flip|deal) P&L/i.test(notes)) return 'Excluded';
+    var m = /(?:^|·)\s*(Buying|Rehab|Holding|Selling|After Sale|Operating|Excluded)\s*(?:·|$)/.exec(notes.replace(LEDGER_PB, ''));
+    if (m) return m[1];
+    if (/wire fee/i.test(payee)) return 'Buying';
+    if (/mortgage payment/i.test(payee)) return 'Holding';
+    if (/^Source:|Material log|Labor log/.test(notes.replace(LEDGER_PB, ''))) return 'Rehab';   // imported rehab logs
+    if (/Loan Interest|Utilities|Insurance|Property Tax/i.test(cat)) return 'Holding';
+    if (/Closing Costs/i.test(cat)) return ledgerAtSale(e) ? 'Selling' : 'Buying';
+    if (/Marketing|Commission/i.test(cat)) return 'Selling';
+    return 'Rehab';
+  }
+  /** items: the expense rows linked to one property. Returns bucket sums, who paid what during the deal, and what escrow pays at sale. */
+  function ledger(items) {
+    var L = { count: 0, buying: 0, rehab: 0, holding: 0, selling: 0, after: 0, operating: 0, excluded: 0, deal: 0, total: 0, atSaleTotal: 0, atSale: [], paid: {}, afterPaid: {} };
+    var key = { 'Buying': 'buying', 'Rehab': 'rehab', 'Holding': 'holding', 'Selling': 'selling', 'After Sale': 'after', 'Operating': 'operating', 'Excluded': 'excluded' };
+    var r = function (x) { return Math.round(x * 100) / 100; };
+    (items || []).forEach(function (e) {
+      if (!e || String(e.deleted) === '1') return;
+      var a = ledgerNum(e.amount), ph = ledgerPhase(e), at = ledgerAtSale(e), who = ledgerPayer(e) || 'Not recorded';
+      L.count++; L.total += a; L[key[ph]] += a;
+      if (LEDGER_DEAL.indexOf(ph) < 0) return;
+      L.deal += a;
+      if (at) { L.atSaleTotal += a; L.atSale.push({ payee: String(e.payee || ''), amount: r(a), phase: ph, date: String(e.date || '') }); }
+      else if (ph === 'After Sale') L.afterPaid[who] = r((L.afterPaid[who] || 0) + a);
+      else L.paid[who] = r((L.paid[who] || 0) + a);
+    });
+    ['buying', 'rehab', 'holding', 'selling', 'after', 'operating', 'excluded', 'deal', 'total', 'atSaleTotal'].forEach(function (k) { L[k] = r(L[k]); });
+    return L;
+  }
+  /** Group a full expense list by property id. */
+  function ledgers(items) {
+    var by = {}, out = {};
+    (items || []).forEach(function (e) { if (e && e.linkId && e.linkType !== 'general') (by[e.linkId] = by[e.linkId] || []).push(e); });
+    for (var k in by) out[k] = ledger(by[k]);
+    return out;
+  }
+  function ledgerR2(x) { return Math.round(x * 100) / 100; }
+  function ledgerPayerMatches(payer, name) { payer = String(payer || '').toLowerCase(); name = String(name || '').toLowerCase().trim(); return !!name && (payer === name || payer.indexOf(name + ' ') === 0 || payer.indexOf(name + '(') === 0); }
+  function ledgerSetupRow(x) { return x && (x.payout || x.meta); }
+  /** Apply a property's expense ledger: cost buckets, capital per partner and cash in all come from the entries.
+      Settings that stay on the property: price, loan, sale price, credits, rehab budget, each partner's purchase cash and split. */
+  function ledgerLive(f) {
+    var L = f && f.ledger;
+    if (!L) return f;
+    var g = {}; for (var k in f) g[k] = f[k];
+    g.buyClosingCosts = L.buying; g.rehabSpent = L.rehab; g.holdingCosts = L.holding; g.sellingCosts = L.selling; g.otherCosts = L.after;
+    if (L.after && !g.otherCostsLabel) g.otherCostsLabel = 'After-Sale Costs';
+    var rows = (f.investors || []).filter(function (x) { return x && !ledgerSetupRow(x); });
+    var linked = rows.length && rows.every(function (x) { return x.purchaseCash !== undefined && x.purchaseCash !== null; });
+    var matched = {};
+    if (linked) {
+      g.investors = rows.map(function (x) {
+        var spent = 0;
+        for (var p in L.paid) if (ledgerPayerMatches(p, x.name)) { spent += L.paid[p]; matched[p] = 1; }
+        var o = {}; for (var j in x) o[j] = x[j];
+        o.purchaseCash = ledgerR2(ledgerNum(x.purchaseCash)); o.expensesPaid = ledgerR2(spent); o.capital = ledgerR2(ledgerNum(x.purchaseCash) + spent);
+        return o;
+      }).concat((f.investors || []).filter(ledgerSetupRow));
+      g.cashInvested = ledgerR2(g.investors.filter(function (x) { return !ledgerSetupRow(x); }).reduce(function (t, x) { return t + x.capital; }, 0));
+    } else {
+      var paid = 0; for (var q in L.paid) paid += L.paid[q];
+      g.cashInvested = ledgerR2(Math.max(0, ledgerNum(f.purchasePrice) - ledgerNum(f.loanAmount)) + paid);
+    }
+    g.unmatchedPaid = {}; if (linked) for (var u in L.paid) if (!matched[u]) g.unmatchedPaid[u] = L.paid[u];
+    g._live = !!linked || !rows.length;
+    return g;
+  }
+  /* LEDGER-END */
+
+  /** Purchase To Payout, built from the live numbers (never stored). */
+  function payoutOf(f, x) {
+    var L = f.ledger, inv = x.investors, sold = f.status === 'Sold';
+    var price = n(f.purchasePrice), loan = n(f.loanAmount), sale = n(f.salePrice), adj = n(f.adjustments);
+    var meta = ((f.investors || []).filter(ledgerSetupRow)[0] || {});
+    var src = (meta.payout && meta.payout.source) || (meta.meta && meta.meta.source) || '';
+    var lender = f.lender ? ' · ' + f.lender : '';
+    var purchase = [['Purchase Price', price]];
+    if (loan) purchase.push(['Loan' + lender, -loan]);
+    purchase.push(['Buying Closing Costs', L.buying]);
+    var capital = inv.map(function (i) {
+      return [i.name, i.capital, i.purchaseCash && i.expensesPaid ? 'Purchase ' + fmt(i.purchaseCash) + ' + expenses ' + fmt(i.expensesPaid) : ''];
+    });
+    var capTotal = r2(inv.reduce(function (t, i) { return t + i.capital; }, 0));
+    var saleRows = [[sold ? 'Sale Price' : 'Sale Price (Projected)', sale]];
+    if (loan) saleRows.push(['Loan Payoff' + lender, -loan]);
+    var groups = {}, order = [];
+    L.atSale.forEach(function (a) { if (!groups[a.phase]) { groups[a.phase] = 0; order.push(a.phase); } groups[a.phase] += a.amount; });
+    var lab = { 'Buying': 'Buying Costs Paid At Sale', 'Rehab': 'Rehab Paid From Escrow', 'Holding': 'Holding Costs Paid At Sale', 'Selling': 'Selling Costs Through Escrow', 'After Sale': 'Held Back After Sale' };
+    order.forEach(function (p) { saleRows.push([lab[p], -r2(groups[p])]); });
+    if (adj) saleRows.push([f.adjustmentsLabel || 'Credits', adj]);
+    var net = r2(sale - loan - L.atSaleTotal + adj), toPartners = r2(capTotal + x.profit), diff = r2(toPartners - net);
+    if (Math.abs(diff) >= 0.01) saleRows.push(['Settled Outside The Sale Escrow', diff, 'Costs in the totals not paid by a partner or the sale escrow']);
+    var paid = inv.map(function (i) {
+      return [i.name, i.distribution, 'Capital ' + fmt(i.capital) + (i.profitShare < 0 ? ' − ' + fmt(-i.profitShare) + ' loss' : ' + ' + fmt(i.profitShare) + ' profit') + ' (' + pct(i.split) + ')'];
+    });
+    return { title: 'Purchase To Payout' + (sold ? '' : ' (Projected)'),
+      purchase: purchase, purchaseTotal: ['Cash To Purchase', r2(price - loan + L.buying)],
+      capital: capital, capitalTotal: ['Total Cash Invested', capTotal],
+      saleTitle: sold ? 'Paid Out' : 'Projected Payout',
+      sale: saleRows, saleTotal: ['Paid Out To Partners', toPartners],
+      paid: paid, paidTotal: ['Total To Partners', r2(inv.reduce(function (t, i) { return t + i.distribution; }, 0))],
+      source: src, live: true };
+  }
+  function fmt(v) { var s = Math.abs(v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); return (v < 0 ? '−$' : '$') + s; }
+  function pct(v) { var p = Math.round(n(v) * 1000) / 10; return (p % 1 ? p.toFixed(1) : String(p)) + '%'; }
+
+  /** A saved flip's numbers → totals, ROI, hold, investor distributions. Pass a flip through live() first when it has a ledger. */
   function flip(f, today) {
+    if (f && f.ledger && !f._liveApplied) { f = ledgerLive(f); f._liveApplied = true; }
     var totalCost = n(f.purchasePrice) + n(f.buyClosingCosts) + n(f.rehabSpent) + n(f.holdingCosts) + n(f.sellingCosts) + n(f.otherCosts) - n(f.adjustments);
     var profit = n(f.salePrice) - totalCost;
     var cash = n(f.cashInvested);
@@ -115,19 +240,28 @@
     var days = f.purchaseDate && end ? daysBetween(f.purchaseDate, end) : 0;
     var ann = sold && f.purchaseDate && f.saleDate ? annualize(roiCash, days) : { simple: null, compound: null };
     var meta = (f.investors || []).filter(function (x) { return x && x.payout; })[0];
-    var inv = (f.investors || []).filter(function (x) { return x && !x.payout; }).map(function (x) {
-      var share = profit * n(x.split);
-      return { name: x.name, capital: n(x.capital), split: n(x.split), profitShare: r2(share), distribution: r2(n(x.capital) + share) };
+    var rows0 = (f.investors || []).filter(function (x) { return x && !ledgerSetupRow(x); }), given = 0;
+    var splitSum = rows0.reduce(function (t, x) { return t + n(x.split); }, 0);
+    var inv = rows0.map(function (x, k) {
+      // Shares are rounded to the cent; when the splits add to 100% the last partner takes the leftover cent so the totals tie out.
+      var share = k === rows0.length - 1 && Math.abs(splitSum - 1) < 1e-6 ? r2(profit) - given : r2(profit * n(x.split)); given = r2(given + share);
+      return { name: x.name, capital: n(x.capital), split: n(x.split), profitShare: r2(share), distribution: r2(n(x.capital) + share),
+        purchaseCash: x.purchaseCash, expensesPaid: x.expensesPaid, note: x.note || '' };
     });
-    return { totalCost: r2(totalCost), profit: r2(profit), roiCash: roiCash, roiCost: roiCost, daysHeld: days,
+    var out = { totalCost: r2(totalCost), profit: r2(profit), roiCash: roiCash, roiCost: roiCost, daysHeld: days,
       needsSaleDate: sold && !f.saleDate, needsPurchaseDate: !f.purchaseDate, simpleAnnual: ann.simple, compoundAnnual: ann.compound,
-      investors: inv, payout: meta ? meta.payout : null, rehabVariance: r2(n(f.rehabSpent) - n(f.rehabBudget)) };
+      investors: inv, payout: null, rehabVariance: r2(n(f.rehabSpent) - n(f.rehabBudget)), live: !!f._live };
+    if (f._live && f.ledger && inv.length) out.payout = payoutOf(f, out);
+    else if (meta && meta.payout && meta.payout.sale) out.payout = meta.payout;
+    Object.defineProperty(out, 'f', { value: f, enumerable: false });
+    return out;
   }
 
   /** A holding (kept property): equity, cash flow, cash-on-cash and total return on cash invested. */
   function holding(h, today) {
+    if (h && h.ledger && !h._liveApplied) { h = ledgerLive(h); h._liveApplied = true; }
     var value = n(h.currentValue), bal = n(h.loanBalance), cash = n(h.cashInvested);
-    var allIn = n(h.purchasePrice) + n(h.buyClosingCosts) + n(h.rehabSpent);
+    var allIn = n(h.purchasePrice) + n(h.buyClosingCosts) + n(h.rehabSpent) + (h.ledger ? n(h.holdingCosts) + n(h.sellingCosts) + n(h.otherCosts) : 0);
     var inc = n(h.monthlyIncome), exp = n(h.monthlyExpenses), cf = inc - exp;
     var hasIncome = exp > 0; // cash flow is only known once expenses are entered (rent alone is not cash flow)
     var equity = value - bal;
@@ -141,6 +275,6 @@
       totalRoi: cash > 0 && value > 0 ? (equity - cash + (hasIncome ? cf * 12 : 0)) / cash : null, noi: r2(hasIncome ? cf * 12 : 0), cashFlowToDate: r2(cfToDate), monthsHeld: months, daysHeld: days };
   }
 
-  var api = { estimate: estimate, flip: flip, holding: holding, daysBetween: daysBetween, annualize: annualize, n: n };
+  var api = { estimate: estimate, flip: flip, holding: holding, live: ledgerLive, ledger: ledger, ledgers: ledgers, phaseOf: ledgerPhase, atSaleOf: ledgerAtSale, payerOf: ledgerPayer, PHASES: LEDGER_PHASES, DEAL_PHASES: LEDGER_DEAL, daysBetween: daysBetween, annualize: annualize, n: n };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.FlipCalc = api;
 })(this);
