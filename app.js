@@ -637,7 +637,7 @@
     bindPdf(function () {
       var x = paint(), tn = document.getElementById('taxnote');
       return Promise.resolve({ inputs: x.i, results: x.r, items: x.r.items, taxNote: tn ? tn.textContent : '', savedLine: est ? (document.querySelector('.lead') || {}).textContent : 'Unsaved estimate', who: (S.user || {}).name || '' });
-    }, 'estimate', 'Estimate', function () { return (document.querySelector('#cf [data-k=address]') || {}).value || (est && est.address) || 'Estimate'; });
+    }, 'estimate', 'Estimate Report', function () { return (document.querySelector('#cf [data-k=address]') || {}).value || (est && est.address) || 'Estimate'; });
     document.getElementById('save').onclick = function () {
       var b = this, x = paint(), i = x.i; b.disabled = true;
       var inputs2 = Object.assign({}, i); delete inputs2.name; delete inputs2.address; delete inputs2.flipId;
@@ -673,18 +673,10 @@
     LanaPDF.load(); // fetch the PDF tools now so the tap can open the share sheet right away
     b.onclick = function () {
       var old = b.textContent; b.disabled = true; b.textContent = 'Building PDF…';
+      LanaPDF.loadPdfjs();
       Promise.all([LanaPDF.load(), getData()]).then(function (res) {
-        var name = LanaPDF.fileName(label, typeof addr === 'function' ? addr() : addr), doc = LanaPDF[kind](res[1]);
-        return LanaPDF.save(doc, name).then(function (how) { if (how === 'download') toast('PDF downloaded.'); else if (how === 'share') toast('PDF ready.'); })
-          .catch(function (e) {
-            if (!e || !e.retry) throw e;
-            // The share sheet needs a fresh tap after the PDF finished building.
-            modal('<h2>Your PDF Is Ready</h2><p class="sub2">' + esc(name) + '</p><div class="row"><button class="btn gold" id="pshare">Save Or Share PDF</button><button class="btn" id="popen">Open PDF</button><button class="btn" id="cx">Close</button></div>', function () {
-              document.getElementById('cx').onclick = closeModal;
-              document.getElementById('pshare').onclick = function () { navigator.share({ files: [e.file], title: name }).then(closeModal, function () {}); };
-              document.getElementById('popen').onclick = function () { var u = URL.createObjectURL(e.blob); closeModal(); var w = window.open(u, '_blank'); if (!w) location.href = u; };
-            });
-          });
+        var name = LanaPDF.fileName(label, typeof addr === 'function' ? addr() : addr);
+        LanaPDF.preview(LanaPDF[kind](res[1]), name, label);
       }).catch(fail).then(function () { b.disabled = false; b.textContent = old; });
     };
   }

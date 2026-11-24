@@ -19,7 +19,19 @@
   function fdate(iso) { if (!iso) return ''; var m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso); return m ? (+m[2]) + '/' + (+m[3]) + '/' + m[1] : String(iso); }
   function stamp() { return new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }); }
 
-  function Doc(kind, title, sub, who) {
+  var gradCache = {};
+  function gradImg(w, h, r, cols) {
+    var key = [w, h, r].concat(cols).join('|'); if (gradCache[key]) return gradCache[key];
+    try {
+      var S = 3, c = document.createElement('canvas'); c.width = Math.round(w * S); c.height = Math.round(h * S);
+      var g = c.getContext('2d'), W2 = c.width, H2 = c.height, R = r * S;
+      var gr = g.createLinearGradient(0, 0, W2, H2 * 1.6); gr.addColorStop(0, cols[0]); gr.addColorStop(1, cols[1]);
+      g.beginPath(); g.moveTo(R, 0); g.arcTo(W2, 0, W2, H2, R); g.arcTo(W2, H2, 0, H2, R); g.arcTo(0, H2, 0, 0, R); g.arcTo(0, 0, W2, 0, R); g.closePath();
+      g.fillStyle = gr; g.fill();
+      return (gradCache[key] = c.toDataURL('image/png'));
+    } catch (e) { return null; }
+  }
+  function Doc(kind, title, sub, who, status) {
     var J = root.jspdf.jsPDF, doc = new J({ unit: 'pt', format: 'letter' }), W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), M = 40;
     var self = { doc: doc, W: W, H: H, M: M, y: 0 };
     var headered = {};
@@ -33,6 +45,10 @@
       doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(200, 200, 205); doc.text('INVESTMENTS', M + 46, 50, { charSpace: 2 });
       doc.setTextColor.apply(doc, WHITE); doc.setFont('helvetica', 'bold'); doc.setFontSize(10); doc.text(t(kind.toUpperCase()), W - M, 37, { align: 'right', charSpace: 1 });
       doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(200, 200, 205); doc.text(t('Generated ' + stamp()), W - M, 50, { align: 'right' });
+      if (status) { // small gold status label under the generated stamp
+        var st = t(String(status).toUpperCase()); doc.setFont('helvetica', 'bold'); doc.setFontSize(7); var tw = doc.getTextWidth(st) + 0.8 * (st.length - 1), sw = tw + 14;
+        doc.setFillColor.apply(doc, GOLD1); doc.roundedRect(W - M - sw, 56, sw, 13, 6.5, 6.5, 'F'); doc.setTextColor.apply(doc, BLACK); doc.text(st, W - M - sw + 7, 65.2, { charSpace: 0.8 });
+      }
     }
     self.header = header;
     header();
@@ -46,14 +62,13 @@
       doc.setDrawColor.apply(doc, LINE); doc.setLineWidth(0.6); doc.line(M + doc.getTextWidth(t(label.toUpperCase())) + label.length * 1.4 + 8, self.y + 7, W - M, self.y + 7); self.y += 20;
     };
     self.hero = function (label, value, note, loss) {
-      self.ensure(78); var c1 = loss ? RED1 : BLACK, c2 = loss ? RED2 : [27, 26, 23];
-      doc.setFillColor.apply(doc, c1); doc.roundedRect(M, self.y, W - 2 * M, 66, 8, 8, 'F');
-      // A soft fade toward the right edge (gold glow on black, darker red on red).
-      var bw = W - 2 * M, x0 = M + bw * 0.5, step = (W - M - 8 - x0) / 16, col;
-      for (var s = 0; s < 16; s++) { col = c1.map(function (v, k) { return Math.round(v + ((loss ? c2 : [52, 46, 34])[k] - v) * (s + 1) / 16); }); doc.setFillColor.apply(doc, col); doc.rect(x0 + step * s, self.y, step + 0.6, 66, 'F'); }
-      doc.roundedRect(W - M - 16, self.y, 16, 66, 8, 8, 'F');
-      doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor.apply(doc, loss ? [255, 255, 255] : GOLD1); doc.text(t(label.toUpperCase()), M + 16, self.y + 20, { charSpace: 1.5 });
-      doc.setFontSize(26); doc.setTextColor.apply(doc, loss ? [255, 255, 255] : GOLD1); doc.text(t(value), M + 16, self.y + 48);
+      self.ensure(78); var bw = W - 2 * M;
+      // Smooth background: one hi-res canvas gradient (PNG, rounded corners baked in) instead of stepped jsPDF rects.
+      var img = gradImg(bw, 66, 8, loss ? ['#EF0207', '#9A0007'] : ['#1FA463', '#0B6B3A']);
+      if (img) doc.addImage(img, 'PNG', M, self.y, bw, 66, loss ? 'heroLoss' : 'heroGain', 'FAST');
+      else { doc.setFillColor.apply(doc, loss ? RED1 : [22, 132, 76]); doc.roundedRect(M, self.y, bw, 66, 8, 8, 'F'); }
+      doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5); doc.setTextColor(255, 255, 255); doc.text(t(label.toUpperCase()), M + 16, self.y + 20, { charSpace: 1.5 });
+      doc.setFontSize(26); doc.setTextColor(255, 255, 255); doc.text(t(value), M + 16, self.y + 48);
       if (note) { doc.setFont('helvetica', 'normal'); doc.setFontSize(9); doc.setTextColor(235, 235, 238); doc.text(t(note), W - M - 16, self.y + 48, { align: 'right' }); }
       self.y += 80;
     };
@@ -121,7 +136,7 @@
 
   function flip(d) {
     var f = d.f, x = d.x, sold = f.status === 'Sold';
-    var R = Doc('Flip Report', f.address, [f.city, f.partners, 'Status: ' + f.status].filter(Boolean).join(' · '), d.who);
+    var R = Doc('Flip Report', f.address, f.city || '', d.who, f.status);
     R.hero(sold ? (x.profit < 0 ? 'Loss' : 'Profit') : (x.profit < 0 ? 'Projected Loss' : 'Projected Profit'), money(x.profit, 0), (sold ? 'Sold for ' : 'At a ') + money(f.salePrice, 0) + (sold ? '' : ' sale'), x.profit < 0);
     R.kpis([['Return On Cash', pct(x.roiCash), x.roiCash < 0 ? 'bad' : ''], ['Return On Total Cost', pct(x.roiCost), x.roiCost < 0 ? 'bad' : ''], ['Cash Invested', money(f.cashInvested, 0)], [sold ? 'Annualized (Simple)' : 'Days Held So Far', sold ? pct(x.simpleAnnual) : String(x.daysHeld || '-')]]);
     R.section('The Numbers');
@@ -139,7 +154,7 @@
   }
   function holding(d) {
     var f = d.f, x = d.x;
-    var R = Doc('Holding Report', f.address, [f.city, f.partners, 'Status: ' + f.status].filter(Boolean).join(' · '), d.who);
+    var R = Doc('Holding Report', f.address, f.city || '', d.who, f.status);
     R.hero('Equity', money(x.equity, 0), (x.value ? money(x.value, 0) + ' value' : 'Needs value') + ' - ' + money(x.loanBalance, 0) + ' loan', x.equity < 0);
     R.kpis([['Monthly Cash Flow', x.hasIncome ? money(x.monthlyCashFlow, 0) : 'Needs data', x.monthlyCashFlow < 0 ? 'bad' : ''], ['Cash-On-Cash', x.hasIncome ? pct(x.cashOnCash) : '-'], ['Equity Gain', pct(x.equityRoi)], ['Total Return', pct(x.totalRoi)]]);
     R.section('The Numbers');
@@ -171,19 +186,49 @@
     return R.finish();
   }
 
-  // Save: iPhone/iPad gets the share sheet (Save to Files); desktop downloads; anything else opens the PDF.
-  function save(doc, name) {
-    var blob = doc.output('blob'), file;
-    try { file = new File([blob], name, { type: 'application/pdf' }); } catch (e) { file = null; }
-    var mobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent) || (navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent));
-    var download = function () { var u = URL.createObjectURL(blob), a = document.createElement('a'); a.href = u; a.download = name; document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(u); a.remove(); }, 4000); return Promise.resolve('download'); };
-    var open = function () { var u = URL.createObjectURL(blob); var w = window.open(u, '_blank'); if (!w) location.href = u; return Promise.resolve('open'); };
-    if (mobile && file && navigator.canShare && navigator.canShare({ files: [file] })) {
-      return navigator.share({ files: [file], title: name.replace(/\.pdf$/, '') }).then(function () { return 'share'; }, function (e) { if (e && e.name === 'AbortError') return 'cancel'; return Promise.reject(Object.assign(new Error('share'), { retry: true, blob: blob, file: file })); });
-    }
-    return mobile ? open() : download();
+  // Full-screen preview: every page drawn with pdf.js (iOS iframes only show page 1), plus Share / Download / Close.
+  var pdfjsP = null;
+  function loadPdfjs() {
+    if (pdfjsP) return pdfjsP;
+    var v = (document.querySelector('script[src*="report.js"]') || {}).src || ''; v = (v.split('?')[1] || '');
+    pdfjsP = loadScript('vendor/pdf.min.js?' + v).then(function () { root.pdfjsLib.GlobalWorkerOptions.workerSrc = 'vendor/pdf.worker.min.js?' + v; return root.pdfjsLib; });
+    pdfjsP.catch(function () { pdfjsP = null; });
+    return pdfjsP;
   }
-  function fileName(kind, addr) { return ('LANA HOMES ' + kind + ' - ' + (addr || 'Report')).replace(/[\\/:*?"<>|#]+/g, '').replace(/\s+/g, ' ').trim().slice(0, 90) + ' ' + new Date().toISOString().slice(0, 10) + '.pdf'; }
+  function openBlob(url) { var w = window.open(url, '_blank'); if (!w) location.href = url; }
+  function preview(doc, name, title) {
+    var blob = doc.output('blob'), url = URL.createObjectURL(blob), file = null;
+    try { file = new File([blob], name, { type: 'application/pdf' }); } catch (e) {}
+    var canShare = !!(file && navigator.share && navigator.canShare && navigator.canShare({ files: [file] }));
+    var ov = document.createElement('div'); ov.className = 'pdfv'; ov.setAttribute('role', 'dialog'); ov.setAttribute('aria-label', title + ' preview');
+    ov.innerHTML = '<div class="pdfv-bar"><div class="pdfv-t"><b></b><span></span></div><div class="pdfv-a">' +
+      '<button type="button" class="btn sm gold" data-a="share">Share</button><button type="button" class="btn sm" data-a="dl">Download</button><button type="button" class="btn sm" data-a="x">Close</button></div></div><div class="pdfv-pages"><div class="loading">Loading preview…</div></div>';
+    ov.querySelector('.pdfv-t b').textContent = title; ov.querySelector('.pdfv-t span').textContent = name;
+    document.body.appendChild(ov); document.documentElement.classList.add('pdfv-open');
+    var close = function () { document.documentElement.classList.remove('pdfv-open'); ov.remove(); setTimeout(function () { URL.revokeObjectURL(url); }, 60000); document.removeEventListener('keydown', onKey); };
+    var onKey = function (e) { if (e.key === 'Escape') close(); }; document.addEventListener('keydown', onKey);
+    ov.querySelector('[data-a=x]').onclick = close;
+    // Share runs straight from the tap with the PDF already built, so iOS keeps the user gesture.
+    ov.querySelector('[data-a=share]').onclick = function () {
+      if (!canShare) { openBlob(url); return; }
+      navigator.share({ files: [file], title: title }).catch(function (e) { if (!e || e.name !== 'AbortError') openBlob(url); });
+    };
+    ov.querySelector('[data-a=dl]').onclick = function () { var a = document.createElement('a'); a.href = url; a.download = name; a.rel = 'noopener'; document.body.appendChild(a); a.click(); setTimeout(function () { a.remove(); }, 1000); };
+    var host = ov.querySelector('.pdfv-pages');
+    loadPdfjs().then(function (lib) { return blob.arrayBuffer().then(function (buf) { return lib.getDocument({ data: new Uint8Array(buf) }).promise; }); }).then(function (pdf) {
+      host.innerHTML = ''; var dpr = Math.min(2.5, window.devicePixelRatio || 1), chain = Promise.resolve();
+      for (var p = 1; p <= pdf.numPages; p++) (function (p) {
+        chain = chain.then(function () { return pdf.getPage(p); }).then(function (page) {
+          var w = Math.min(host.clientWidth - 24, 900), v0 = page.getViewport({ scale: 1 }), sc = w / v0.width, vp = page.getViewport({ scale: sc * dpr });
+          var c = document.createElement('canvas'); c.width = Math.floor(vp.width); c.height = Math.floor(vp.height); c.style.width = Math.floor(v0.width * sc) + 'px'; c.style.height = Math.floor(v0.height * sc) + 'px'; c.className = 'pdfv-page'; c.setAttribute('aria-label', 'Page ' + p);
+          host.appendChild(c); return page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+        });
+      })(p);
+      return chain;
+    }).catch(function () { host.innerHTML = '<p class="empty" style="color:#fff">Preview could not load. Use Share or Download to open the PDF.</p>'; });
+    return ov;
+  }
+  function fileName(kind, addr) { return String(addr || 'Report').replace(/[\\/:*?"<>|#,.]+/g, ' ').trim().replace(/\s+/g, '-').slice(0, 70) + '-' + kind.replace(/\s+/g, '-') + '.pdf'; }
 
-  root.LanaPDF = { load: load, flip: flip, holding: holding, estimate: estimate, save: save, fileName: fileName };
+  root.LanaPDF = { load: load, loadPdfjs: loadPdfjs, flip: flip, holding: holding, estimate: estimate, preview: preview, fileName: fileName };
 })(this);
