@@ -1482,9 +1482,9 @@
   }
   function csvCell(v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
   // Expenses tied to one flip or holding (owner only; the server rejects everyone else).
-  var CAT_FORM = ['Repairs & Materials', 'Labor', 'Material', 'Holding', 'Utilities', 'Permits', 'Reports', 'Marketing', 'Closing Costs', 'Insurance', 'Property Taxes', 'Loan Interest', 'HOA', 'Purchase Cash', 'Other'];
+  var CAT_FORM = ['Repairs & Materials', 'Labor', 'Material', 'Contractor', 'Holding', 'Utilities', 'Permits', 'Reports', 'Marketing', 'Closing Costs', 'Insurance', 'Property Taxes', 'Loan Interest', 'HOA', 'Purchase Cash', 'Other'];
   var CAT_FORM_LABEL = { 'Repairs & Materials': 'Labor & Material' };
-  var CAT_DISPLAY_ORDER = ['Labor & Material', 'Labor', 'Material', 'Holding', 'Utilities', 'Permits', 'Reports', 'Marketing', 'Buying Closing Costs', 'Selling Closing Costs', 'Closing Costs', 'Insurance', 'Taxes', 'Financing/Interest'];
+  var CAT_DISPLAY_ORDER = ['Labor & Material', 'Labor', 'Material', 'Contractor', 'Holding', 'Utilities', 'Permits', 'Reports', 'Marketing', 'Buying Closing Costs', 'Selling Closing Costs', 'Closing Costs', 'Insurance', 'Taxes', 'Financing/Interest'];
   function catDisplayOf(e) {
     var c = String(e.category || '').trim() || 'Other', ph = C.phaseOf(e);
     if (c === 'Repairs & Materials' || c === 'Labor & Material') return 'Labor & Material';
