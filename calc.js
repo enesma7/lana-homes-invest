@@ -328,6 +328,28 @@
     if (!start || !end || end < start) return 0;
     return Math.max(0, Math.floor(daysBetween(start, end) / 30.4375));
   }
+
+  /**
+   * Recurring vs non-recurring holding/operating expense.
+   * Recurring: utilities, taxes, insurance, trash, internet, HOA.
+   * Non-recurring: one-off repairs, labor, materials, etc.
+   * Optional e.holdingClass ('recurring' | 'non-recurring') or a Recurring / Non-Recurring notes tag overrides the inference.
+   * Display-only: does not change equity, monthly cash flow, cash-on-cash, or payouts.
+   */
+  function holdingClassOf(e) {
+    var raw = String((e && (e.holdingClass || e.holdingKind)) || '').toLowerCase().replace(/[_ ]+/g, '-');
+    if (raw === 'recurring') return 'recurring';
+    if (raw === 'non-recurring' || raw === 'nonrecurring') return 'non-recurring';
+    var notes = String((e && e.notes) || '');
+    if (/(?:^|[·,;]|\n)\s*non-?recurring\s*(?:[·,;]|$|\n)/i.test(notes)) return 'non-recurring';
+    if (/(?:^|[·,;]|\n)\s*recurring\s*(?:[·,;]|$|\n)/i.test(notes)) return 'recurring';
+    var cat = String((e && e.category) || '').toLowerCase();
+    var payee = String((e && e.payee) || '').toLowerCase();
+    if (/utilit|property tax|\btaxes\b|insurance|\bhoa\b|homeowners|trash|waste|internet|sewer/.test(cat)) return 'recurring';
+    if (/burrtec|\bspectrum\b|socal gas|\bedison\b|waste management|republic services|hoa\b|homeowners assoc|property tax/.test(payee)) return 'recurring';
+    if (/^(water|trash|internet|gas|electric|edison|insurance)$/.test(payee.trim())) return 'recurring';
+    return 'non-recurring';
+  }
   /**
    * Calendar-year rental / tax figures for a holding, derived from rentalStart, monthly rent,
    * and dated expense rows. Does not change equity, monthly cash flow, cash-on-cash, or payouts.
@@ -347,7 +369,7 @@
     var years = {}, y;
     function ensure(yy) {
       var k = String(yy);
-      if (!years[k]) years[k] = { year: k, monthsRented: 0, rent: 0, expenses: 0, net: 0, byCategory: {}, capital: 0, capitalByCategory: {}, rows: [], capitalRows: [], from: '', to: '', closed: false };
+      if (!years[k]) years[k] = { year: k, monthsRented: 0, rent: 0, expenses: 0, recurring: 0, nonRecurring: 0, net: 0, byCategory: {}, recurringByCategory: {}, nonRecurringByCategory: {}, capital: 0, capitalByCategory: {}, rows: [], capitalRows: [], from: '', to: '', closed: false };
       return years[k];
     }
     for (y = startY; y <= endY; y++) {
@@ -373,6 +395,14 @@
         rec.expenses = r2(rec.expenses + a);
         rec.byCategory[cat] = r2((rec.byCategory[cat] || 0) + a);
         rec.rows.push(e);
+        var klass = holdingClassOf(e);
+        if (klass === 'recurring') {
+          rec.recurring = r2(rec.recurring + a);
+          rec.recurringByCategory[cat] = r2((rec.recurringByCategory[cat] || 0) + a);
+        } else {
+          rec.nonRecurring = r2(rec.nonRecurring + a);
+          rec.nonRecurringByCategory[cat] = r2((rec.nonRecurringByCategory[cat] || 0) + a);
+        }
       } else if (ph === 'Buying' || ph === 'Rehab') {
         rec.capital = r2(rec.capital + a);
         rec.capitalByCategory[cat] = r2((rec.capitalByCategory[cat] || 0) + a);
@@ -400,6 +430,6 @@
     };
   }
 
-  var api = { splitsOf: splitsOf, ledgerSum: ledgerSum, payerMatches: ledgerPayerMatches, estimate: estimate, flip: flip, holding: holding, holdingTaxYears: holdingTaxYears, live: ledgerLive, ledger: ledger, ledgers: ledgers, phaseOf: ledgerPhase, atSaleOf: ledgerAtSale, payerOf: ledgerPayer, PHASES: LEDGER_PHASES, DEAL_PHASES: LEDGER_DEAL, daysBetween: daysBetween, monthsBetween: monthsBetween, annualize: annualize, n: n, downPayment: downPayment, cashToPurchase: cashToPurchase, parseOverrides: parseOverrides, applyOverrides: applyOverrides };
+  var api = { splitsOf: splitsOf, ledgerSum: ledgerSum, payerMatches: ledgerPayerMatches, estimate: estimate, flip: flip, holding: holding, holdingTaxYears: holdingTaxYears, holdingClassOf: holdingClassOf, live: ledgerLive, ledger: ledger, ledgers: ledgers, phaseOf: ledgerPhase, atSaleOf: ledgerAtSale, payerOf: ledgerPayer, PHASES: LEDGER_PHASES, DEAL_PHASES: LEDGER_DEAL, daysBetween: daysBetween, monthsBetween: monthsBetween, annualize: annualize, n: n, downPayment: downPayment, cashToPurchase: cashToPurchase, parseOverrides: parseOverrides, applyOverrides: applyOverrides };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.FlipCalc = api;
 })(this);

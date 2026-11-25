@@ -178,7 +178,14 @@
     var ty = d.taxYears, ytd = ty && ty.ytd, hist = ty && ty.history || [];
     if (ytd) {
       var yrows = [['Months Rented', String(ytd.monthsRented)], ['Rent Collected', money(ytd.rent)], ['Expenses Paid', money(ytd.expenses)]];
-      Object.keys(ytd.byCategory || {}).sort().forEach(function (k) { yrows.push(['  ' + k, money(ytd.byCategory[k])]); });
+      if (ytd.recurring) {
+        yrows.push(['  Recurring Holding Expenses', money(ytd.recurring)]);
+        Object.keys(ytd.recurringByCategory || {}).sort().forEach(function (k) { yrows.push(['    ' + k, money(ytd.recurringByCategory[k])]); });
+      }
+      if (ytd.nonRecurring) {
+        yrows.push(['  Non-Recurring Holding Expenses', money(ytd.nonRecurring)]);
+        Object.keys(ytd.nonRecurringByCategory || {}).sort().forEach(function (k) { yrows.push(['    ' + k, money(ytd.nonRecurringByCategory[k])]); });
+      }
       yrows.push(['Net Cash Flow', money(ytd.net), true]);
       if (ytd.capital) yrows.push(['Improvements / Purchase Costs (Not In Net)', money(ytd.capital)]);
       R.section(ytd.year + ' YTD');
@@ -190,7 +197,14 @@
     }
     hist.forEach(function (yr) {
       var hrows = [['Months Rented', String(yr.monthsRented)], ['Rent Collected', money(yr.rent)], ['Expenses Paid', money(yr.expenses)]];
-      Object.keys(yr.byCategory || {}).sort().forEach(function (k) { hrows.push(['  ' + k, money(yr.byCategory[k])]); });
+      if (yr.recurring) {
+        hrows.push(['  Recurring Holding Expenses', money(yr.recurring)]);
+        Object.keys(yr.recurringByCategory || {}).sort().forEach(function (k) { hrows.push(['    ' + k, money(yr.recurringByCategory[k])]); });
+      }
+      if (yr.nonRecurring) {
+        hrows.push(['  Non-Recurring Holding Expenses', money(yr.nonRecurring)]);
+        Object.keys(yr.nonRecurringByCategory || {}).sort().forEach(function (k) { hrows.push(['    ' + k, money(yr.nonRecurringByCategory[k])]); });
+      }
       hrows.push(['Net Cash Flow', money(yr.net), true]);
       if (yr.capital) hrows.push(['Improvements / Purchase Costs (Not In Net)', money(yr.capital)]);
       R.section('Tax Year ' + yr.year);

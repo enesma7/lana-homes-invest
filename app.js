@@ -1180,6 +1180,20 @@
   function catLines(map) {
     return Object.keys(map || {}).sort().map(function (k) { return [k, map[k]]; });
   }
+  function holdingGroupLines(yearRec) {
+    var html = '', groups = [
+      ['Recurring Holding Expenses', yearRec.recurring, yearRec.recurringByCategory],
+      ['Non-Recurring Holding Expenses', yearRec.nonRecurring, yearRec.nonRecurringByCategory]
+    ];
+    groups.forEach(function (g) {
+      if (!g[1]) return;
+      html += '<div class="ln sub"><span class="lnl">' + esc(g[0]) + '</span><span class="num">' + money(g[1]) + '</span></div>';
+      catLines(g[2]).forEach(function (c) {
+        html += '<div class="ln sub deep"><span class="lnl">' + esc(c[0]) + '</span><span class="num">' + money(c[1]) + '</span></div>';
+      });
+    });
+    return html;
+  }
   function exportTaxYearCsv(f, yearRec, deposits) {
     var y = yearRec.year, lines = [], row = function (a) { return a.map(csvCell).join(','); };
     lines.push(row(['Property', f.address || '']));
@@ -1188,14 +1202,17 @@
     lines.push(row(['Months Rented', String(yearRec.monthsRented)]));
     lines.push(row(['Rent Collected', Number(yearRec.rent || 0).toFixed(2)]));
     lines.push(row(['Rental Expenses (Operating + Holding)', Number(yearRec.expenses || 0).toFixed(2)]));
+    lines.push(row(['Recurring Holding Expenses', Number(yearRec.recurring || 0).toFixed(2)]));
+    lines.push(row(['Non-Recurring Holding Expenses', Number(yearRec.nonRecurring || 0).toFixed(2)]));
     lines.push(row(['Net Cash Flow', Number(yearRec.net || 0).toFixed(2)]));
     if (deposits) lines.push(row(['Security Deposits Held (owed to tenants, not income)', Number(deposits).toFixed(2)]));
     lines.push(row(['Capital / Improvements (not in net cash flow)', Number(yearRec.capital || 0).toFixed(2)]));
     lines.push('');
     lines.push(row(['Rental Expenses']));
-    lines.push(row(['Date', 'Payee', 'Category', 'Amount', 'Paid By', 'Method', 'Counts As', 'Notes']));
+    lines.push(row(['Date', 'Payee', 'Category', 'Class', 'Amount', 'Paid By', 'Method', 'Counts As', 'Notes']));
     (yearRec.rows || []).forEach(function (e) {
-      lines.push(row([e.date || '', e.payee || '', e.category || '', Number(e.amount || 0).toFixed(2), payerOf(e), e.method || '', C.phaseOf(e), notesOf(e)]));
+      var klass = C.holdingClassOf(e) === 'recurring' ? 'Recurring Holding' : 'Non-Recurring Holding';
+      lines.push(row([e.date || '', e.payee || '', e.category || '', klass, Number(e.amount || 0).toFixed(2), payerOf(e), e.method || '', C.phaseOf(e), notesOf(e)]));
     });
     if ((yearRec.capitalRows || []).length) {
       lines.push('');
@@ -1221,7 +1238,7 @@
         html += ln('Months Rented', String(ytd.monthsRented), '', { lock: 'Whole months from the later of January 1 and the rented-since date, through today — locked' });
         html += ln('Rent Collected', money(ytd.rent), '', { lock: 'Monthly rent × months rented in ' + ytd.year + ' — locked' });
         html += ln('Expenses Paid', money(ytd.expenses), '', { lock: 'Operating and Holding expense entries dated in ' + ytd.year + ' — locked' });
-        catLines(ytd.byCategory).forEach(function (c) { html += '<div class="ln sub"><span class="lnl">' + esc(c[0]) + '</span><span class="num">' + money(c[1]) + '</span></div>'; });
+        html += holdingGroupLines(ytd);
         html += ln('Net Cash Flow', sMoney(ytd.net), 'tot', { lock: 'Rent collected minus dated Operating and Holding expenses in ' + ytd.year + ' — locked' });
         if (ytd.capital) html += ln('Improvements / Purchase Costs (Not In Net)', money(ytd.capital), '', { lock: 'Buying and Rehab entries dated in ' + ytd.year + '. Tracked for basis, not subtracted from rental cash flow — locked' });
         html += '</div><div class="row" style="margin:8px 0 4px"><button type="button" class="btn sm" id="ytcsv">Export ' + esc(ytd.year) + ' YTD CSV</button></div>';
@@ -1239,9 +1256,8 @@
         html += '<p class="sub2">No completed tax years yet. ' + esc(tax.currentYear) + ' will appear here after December 31, built from that year’s dated expenses and months rented, and will stay in this list.</p>';
       } else {
         html += hist.map(function (yr) {
-          var cats = catLines(yr.byCategory).map(function (c) { return '<div class="ln sub"><span class="lnl">' + esc(c[0]) + '</span><span class="num">' + money(c[1]) + '</span></div>'; }).join('');
           return '<details class="taxyear"><summary><span>' + esc(yr.year) + ' · ' + (fmtDate(yr.from) || yr.from) + ' – ' + (fmtDate(yr.to) || yr.to) + '</span><span class="num">' + sMoney(yr.net) + ' net</span></summary><div class="lines">' +
-            ln('Months Rented', String(yr.monthsRented)) + ln('Rent Collected', money(yr.rent)) + ln('Expenses Paid', money(yr.expenses)) + cats +
+            ln('Months Rented', String(yr.monthsRented)) + ln('Rent Collected', money(yr.rent)) + ln('Expenses Paid', money(yr.expenses)) + holdingGroupLines(yr) +
             ln('Net Cash Flow', sMoney(yr.net), 'tot') +
             (yr.capital ? ln('Improvements / Purchase Costs (Not In Net)', money(yr.capital)) : '') +
             '</div><div class="row" style="margin:8px 0 4px"><button type="button" class="btn sm" data-taxcsv="' + esc(yr.year) + '">Export ' + esc(yr.year) + ' CSV</button></div></details>';
