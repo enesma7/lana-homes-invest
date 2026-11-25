@@ -305,28 +305,81 @@
     if (h && h.ledger && !h._liveApplied) { h = ledgerLive(h); h._liveApplied = true; }
     var value = n(h.currentValue), bal = n(h.loanBalance), cash = n(h.cashInvested);
     var allIn = n(h.purchasePrice) + n(h.buyClosingCosts) + n(h.rehabSpent) + (h.ledger ? n(h.holdingCosts) + n(h.sellingCosts) + n(h.otherCosts) : 0);
-    var inc = n(h.monthlyIncome), exp = n(h.monthlyExpenses), cf = inc - exp;
+    var inc = monthlyRentOf(h), exp = n(h.monthlyExpenses), cf = inc - exp;
     var hasIncome = exp > 0; // cash flow is only known once expenses are entered (rent alone is not cash flow)
     var equity = value - bal;
     var end = h.status === 'Sold' && h.saleDate ? h.saleDate : (today || new Date().toISOString().slice(0, 10));
     var days = h.purchaseDate ? daysBetween(h.purchaseDate, end) : null;
     var months = days == null ? null : Math.max(0, Math.floor(days / 30.4375));
-    // Months held stays purchase-to-now (ownership). Rent collected / cash flow to date use rented-since, falling back to purchase.
-    var rentStart = h.rentalStart || h.purchaseDate;
+    // Months held stays purchase-to-now (ownership, 30.4375-day months). Rent collected uses payment-date months (paid on the start day-of-month).
+    var rentStart = earliestStart(h);
+    var units = unitsOf(h);
     var daysRented = rentStart ? daysBetween(rentStart, end) : null;
-    var monthsRented = daysRented == null ? null : Math.max(0, Math.floor(daysRented / 30.4375));
-    var cfToDate = monthsRented == null || !hasIncome ? 0 : cf * monthsRented;
-    var rentToDate = monthsRented == null || !inc ? 0 : inc * monthsRented;
+    var monthsRented = rentStart ? monthsBetween(rentStart, end) : null;
+    var unitRows = units.map(function (u) {
+      var ms = (u.rentalStart && end >= u.rentalStart) ? monthsBetween(u.rentalStart, end) : (u.rentalStart ? 0 : (monthsRented || 0));
+      return { name: u.name, rent: r2(u.rent), rentalStart: u.rentalStart || '', deposit: u.deposit, monthsRented: ms, rentToDate: r2(n(u.rent) * ms) };
+    });
+    var rentToDate = unitRows.length ? r2(unitRows.reduce(function (s, u) { return s + u.rentToDate; }, 0)) : (monthsRented == null || !inc ? 0 : inc * monthsRented);
+    var cfToDate = monthsRented == null || !hasIncome ? 0 : rentToDate - exp * monthsRented;
     return { rent: r2(inc), expenses: r2(exp), value: r2(value), loanBalance: r2(bal), cashInvested: r2(cash), allIn: r2(allIn), equity: r2(equity), hasIncome: hasIncome,
       monthlyCashFlow: r2(cf), annualCashFlow: r2(cf * 12), cashOnCash: cash > 0 && hasIncome ? cf * 12 / cash : null,
       equityRoi: cash > 0 && value > 0 ? (equity - cash) / cash : null,
-      totalRoi: cash > 0 && value > 0 ? (equity - cash + (hasIncome ? cf * 12 : 0)) / cash : null, noi: r2(hasIncome ? cf * 12 : 0), cashFlowToDate: r2(cfToDate), rentToDate: r2(rentToDate), monthsHeld: months, daysHeld: days, monthsRented: monthsRented, daysRented: daysRented, rentalStart: rentStart || '' };
+      totalRoi: cash > 0 && value > 0 ? (equity - cash + (hasIncome ? cf * 12 : 0)) / cash : null, noi: r2(hasIncome ? cf * 12 : 0), cashFlowToDate: r2(cfToDate), rentToDate: r2(rentToDate), monthsHeld: months, daysHeld: days, monthsRented: monthsRented, daysRented: daysRented, rentalStart: rentStart || '', units: unitRows, deposits: depositsOf(h) };
   }
 
-  /** Whole months between two inclusive calendar dates, same 30.4375-day month as holding(). */
+  /**
+   * Count scheduled rent payments from start through end, on the start day-of-month (clamped to the month’s last day).
+   * When rent starts on the 1st, this is “paid on the 1st”: 8/1–11/25 is Aug, Sep, Oct and Nov (4), not 3 elapsed 30.4375-day months.
+   * Ownership “months held” still uses the 30.4375-day floor in holding().
+   */
   function monthsBetween(start, end) {
     if (!start || !end || end < start) return 0;
-    return Math.max(0, Math.floor(daysBetween(start, end) / 30.4375));
+    var sy = +start.slice(0, 4), sm = +start.slice(5, 7), sd = +start.slice(8, 10);
+    if (!sy || !sm || !sd) return 0;
+    var y = sy, m = sm, count = 0, guard = 0;
+    function pad(n) { return n < 10 ? '0' + n : String(n); }
+    function dim(yy, mm) { return new Date(Date.UTC(yy, mm, 0)).getUTCDate(); }
+    while (guard++ < 1200) {
+      var pay = y + '-' + pad(m) + '-' + pad(Math.min(sd, dim(y, m)));
+      if (pay > end) break;
+      if (pay >= start) count++;
+      m++;
+      if (m > 12) { m = 1; y++; }
+    }
+    return count;
+  }
+
+  /** Normalize holding unit rows: name, monthly rent, rented-since, optional deposit. */
+  function unitsOf(h) {
+    var raw = h && h.units;
+    if (typeof raw === 'string') { try { raw = JSON.parse(raw); } catch (e) { raw = null; } }
+    if ((!raw || !raw.length) && h && h.overrides && h.overrides.units) raw = h.overrides.units;
+    if (!Array.isArray(raw)) return [];
+    return raw.map(function (u) {
+      if (!u) return null;
+      var start = String(u.rentalStart || u.rentedSince || '').slice(0, 10);
+      var o = { name: String(u.name || '').trim(), rent: n(u.rent != null ? u.rent : u.monthlyRent) };
+      if (/^\d{4}-\d{2}-\d{2}$/.test(start)) o.rentalStart = start;
+      if (u.deposit !== undefined && u.deposit !== null && u.deposit !== '') o.deposit = n(u.deposit);
+      return (o.name || o.rent || o.rentalStart) ? o : null;
+    }).filter(Boolean);
+  }
+  function depositsOf(h) {
+    var any = false, sum = 0;
+    unitsOf(h).forEach(function (u) {
+      if (u.deposit !== undefined && u.deposit !== null && u.deposit !== '') { any = true; sum += n(u.deposit); }
+    });
+    return any ? r2(sum) : 0;
+  }
+  function earliestStart(h) {
+    var units = unitsOf(h), starts = units.map(function (u) { return u.rentalStart; }).filter(Boolean).sort();
+    return starts[0] || (h && (h.rentalStart || h.purchaseDate)) || '';
+  }
+  function monthlyRentOf(h) {
+    var units = unitsOf(h);
+    if (!units.length) return n(h && h.monthlyIncome);
+    return r2(units.reduce(function (s, u) { return s + n(u.rent); }, 0));
   }
 
   /**
@@ -351,7 +404,7 @@
     return 'non-recurring';
   }
   /**
-   * Calendar-year rental / tax figures for a holding, derived from rentalStart, monthly rent,
+   * Calendar-year rental / tax figures for a holding, derived from units (or rentalStart + monthly rent),
    * and dated expense rows. Does not change equity, monthly cash flow, cash-on-cash, or payouts.
    * Rental expenses = Operating + Holding rows dated in that year (not Purchase Cash, Rehab, or Buying).
    * Those capital rows are totaled separately and are not subtracted from net cash flow.
@@ -359,9 +412,10 @@
    */
   function holdingTaxYears(h, expenses, today) {
     today = today || new Date().toISOString().slice(0, 10);
-    var rentStart = h && (h.rentalStart || h.purchaseDate) || '';
+    var units = unitsOf(h);
+    var rentStart = earliestStart(h);
     var saleEnd = h && h.status === 'Sold' && h.saleDate ? h.saleDate : '';
-    var inc = n(h && h.monthlyIncome);
+    var inc = monthlyRentOf(h);
     var purchaseY = h && h.purchaseDate ? h.purchaseDate.slice(0, 4) : '';
     var startY = rentStart ? +rentStart.slice(0, 4) : (purchaseY ? +purchaseY : +today.slice(0, 4));
     var endY = +today.slice(0, 4);
@@ -369,7 +423,7 @@
     var years = {}, y;
     function ensure(yy) {
       var k = String(yy);
-      if (!years[k]) years[k] = { year: k, monthsRented: 0, rent: 0, expenses: 0, recurring: 0, nonRecurring: 0, net: 0, byCategory: {}, recurringByCategory: {}, nonRecurringByCategory: {}, capital: 0, capitalByCategory: {}, rows: [], capitalRows: [], from: '', to: '', closed: false };
+      if (!years[k]) years[k] = { year: k, monthsRented: 0, rent: 0, expenses: 0, recurring: 0, nonRecurring: 0, net: 0, byCategory: {}, recurringByCategory: {}, nonRecurringByCategory: {}, capital: 0, capitalByCategory: {}, rows: [], capitalRows: [], from: '', to: '', closed: false, units: [] };
       return years[k];
     }
     for (y = startY; y <= endY; y++) {
@@ -381,7 +435,24 @@
       rec.to = (rec.closed ? last : (today < last ? today : last));
       if (rentStart && rec.to >= from) {
         rec.monthsRented = monthsBetween(from, rec.to);
-        rec.rent = r2(inc * rec.monthsRented);
+        if (units.length) {
+          rec.units = units.map(function (u) {
+            var us = u.rentalStart || rentStart;
+            var uFrom = from, collected = 0, ms = 0;
+            if (us && rec.to >= us) {
+              if (us > uFrom) uFrom = us;
+              if (rec.to >= uFrom) {
+                ms = monthsBetween(uFrom, rec.to);
+                collected = r2(n(u.rent) * ms);
+              }
+            }
+            return { name: u.name, rent: r2(u.rent), rentalStart: us || '', deposit: u.deposit, monthsRented: ms, rentToDate: collected };
+          });
+          rec.rent = r2(rec.units.reduce(function (s, u) { return s + u.rentToDate; }, 0));
+        } else {
+          rec.rent = r2(inc * rec.monthsRented);
+          rec.units = [];
+        }
       }
     }
     (expenses || []).forEach(function (e) {
@@ -422,14 +493,24 @@
     var history = list.filter(function (t) { return t.closed; });
     var lifeEnd = saleEnd && saleEnd < today ? saleEnd : today;
     var lifeMonths = rentStart ? monthsBetween(rentStart, lifeEnd) : 0;
-    var lifeExp = 0, lifeCap = 0;
+    var lifeExp = 0, lifeCap = 0, lifeRent = 0, lifeUnits = [];
     list.forEach(function (t) { lifeExp = r2(lifeExp + t.expenses); lifeCap = r2(lifeCap + t.capital); });
+    if (units.length) {
+      lifeUnits = units.map(function (u) {
+        var us = u.rentalStart || rentStart, ms = (us && lifeEnd >= us) ? monthsBetween(us, lifeEnd) : 0;
+        var collected = r2(n(u.rent) * ms);
+        lifeRent = r2(lifeRent + collected);
+        return { name: u.name, rent: r2(u.rent), rentalStart: us || '', deposit: u.deposit, monthsRented: ms, rentToDate: collected };
+      });
+    } else {
+      lifeRent = r2(inc * lifeMonths);
+    }
     return {
-      currentYear: currentYear, ytd: ytd, history: history, years: list, rentStart: rentStart,
-      sinceRented: { monthsRented: lifeMonths, rent: r2(inc * lifeMonths), expenses: lifeExp, net: r2(inc * lifeMonths - lifeExp), capital: lifeCap }
+      currentYear: currentYear, ytd: ytd, history: history, years: list, rentStart: rentStart, units: units,
+      sinceRented: { monthsRented: lifeMonths, rent: lifeRent, expenses: lifeExp, net: r2(lifeRent - lifeExp), capital: lifeCap, units: lifeUnits }
     };
   }
 
-  var api = { splitsOf: splitsOf, ledgerSum: ledgerSum, payerMatches: ledgerPayerMatches, estimate: estimate, flip: flip, holding: holding, holdingTaxYears: holdingTaxYears, holdingClassOf: holdingClassOf, live: ledgerLive, ledger: ledger, ledgers: ledgers, phaseOf: ledgerPhase, atSaleOf: ledgerAtSale, payerOf: ledgerPayer, PHASES: LEDGER_PHASES, DEAL_PHASES: LEDGER_DEAL, daysBetween: daysBetween, monthsBetween: monthsBetween, annualize: annualize, n: n, downPayment: downPayment, cashToPurchase: cashToPurchase, parseOverrides: parseOverrides, applyOverrides: applyOverrides };
+  var api = { splitsOf: splitsOf, ledgerSum: ledgerSum, payerMatches: ledgerPayerMatches, estimate: estimate, flip: flip, holding: holding, holdingTaxYears: holdingTaxYears, holdingClassOf: holdingClassOf, unitsOf: unitsOf, depositsOf: depositsOf, earliestStart: earliestStart, monthlyRentOf: monthlyRentOf, live: ledgerLive, ledger: ledger, ledgers: ledgers, phaseOf: ledgerPhase, atSaleOf: ledgerAtSale, payerOf: ledgerPayer, PHASES: LEDGER_PHASES, DEAL_PHASES: LEDGER_DEAL, daysBetween: daysBetween, monthsBetween: monthsBetween, annualize: annualize, n: n, downPayment: downPayment, cashToPurchase: cashToPurchase, parseOverrides: parseOverrides, applyOverrides: applyOverrides };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.FlipCalc = api;
 })(this);

@@ -46,7 +46,7 @@
     var c = x.compoundAnnual, showC = days >= 90 && c != null && isFinite(c) && Math.abs(c) <= 10;
     return { title: showC ? 'Annualized (Simple / Compound)' : 'Annualized (Simple)', html: showC ? simple + ' <span class="meta">/ ' + pct(c) + '</span>' : simple, text: showC ? simple + ' / ' + pct(c) : simple };
   }
-  function depositsHeld(f) { var m = /Security deposits held: \$([\d,]+(?:\.\d+)?)/i.exec(f && f.notes || ''); return m ? Number(m[1].replace(/,/g, '')) : 0; }
+  function depositsHeld(f) { var fromUnits = C.depositsOf ? C.depositsOf(f) : 0; if (fromUnits) return fromUnits; var m = /Security deposits held: \$([\d,]+(?:\.\d+)?)/i.exec(f && f.notes || ''); return m ? Number(m[1].replace(/,/g, '')) : 0; }
   function soldYear(f) { var m = /Sold (\d{4})\b/.exec(f && f.datesNote || ''); return m ? m[1] : ''; }
   function soldCell(f) { return fmtDate(f.saleDate) || ((soldYear(f) ? soldYear(f) + ' ' : '') + '<span class="pill warn">Needs Date</span>'); }
   function fmtDate(d) { if (!d) return ''; var p = d.split('-'); return p.length === 3 ? (+p[1]) + '/' + (+p[2]) + '/' + p[0] : d; }
@@ -839,6 +839,62 @@
     load();
   }
 
+
+  function unitsHtml() {
+    return '<div class="uedit" id="ed-units"><div class="urows"></div><button type="button" class="btn sm" data-uadd>+ Add Unit</button><p class="sub2" style="margin:8px 0 0">Monthly rent and Rented Since on this property are the total and the earliest unit date. Deposits are a liability owed to tenants, not income.</p></div>';
+  }
+  function bindUnits(host, units) {
+    units = (units || []).map(function (u) { return { name: u.name || '', rent: u.rent, rentalStart: u.rentalStart || '', deposit: u.deposit }; });
+    if (!units.length) units = [{ name: '', rent: '', rentalStart: '', deposit: '' }];
+    var box = host.querySelector('.urows');
+    function draw() {
+      box.innerHTML = units.map(function (u, i) {
+        return '<div class="urow" data-ui="' + i + '">' +
+          '<label>Unit<input type="text" data-uf="name" value="' + esc(u.name) + '" placeholder="Unit A"></label>' +
+          '<label>Monthly Rent<input type="text" inputmode="decimal" data-uf="rent" value="' + esc(u.rent === 0 || u.rent ? String(u.rent) : '') + '" placeholder="0.00"></label>' +
+          '<label>Rented Since<input type="date" data-uf="rentalStart" value="' + esc(u.rentalStart || '') + '"></label>' +
+          '<label>Deposit (optional)<input type="text" inputmode="decimal" data-uf="deposit" value="' + esc(u.deposit === 0 || u.deposit ? String(u.deposit) : '') + '" placeholder="Optional"></label>' +
+          '<button type="button" class="btn sm" data-udel aria-label="Remove unit">Remove</button>' +
+          '</div>';
+      }).join('');
+      box.querySelectorAll('.urow').forEach(function (row) {
+        var i = +row.getAttribute('data-ui');
+        row.querySelectorAll('[data-uf]').forEach(function (el) {
+          el.oninput = el.onchange = function () { units[i][el.getAttribute('data-uf')] = el.value; syncDerived(); };
+        });
+        var rm = row.querySelector('[data-udel]');
+        if (rm) rm.onclick = function () { units.splice(i, 1); if (!units.length) units.push({ name: '', rent: '', rentalStart: '', deposit: '' }); draw(); syncDerived(); };
+      });
+    }
+    function read() {
+      return units.map(function (u) {
+        var o = { name: String(u.name || '').trim(), rent: C.n(u.rent), rentalStart: String(u.rentalStart || '').slice(0, 10) };
+        if (u.deposit !== '' && u.deposit != null) o.deposit = C.n(u.deposit);
+        return o;
+      }).filter(function (u) { return u.name || u.rent || u.rentalStart; });
+    }
+    function syncDerived() {
+      var rows = read(), inc = 0, starts = [];
+      rows.forEach(function (u) { inc += u.rent; if (u.rentalStart) starts.push(u.rentalStart); });
+      starts.sort();
+      var root = host.closest('#edpanel') || host.closest('.modal') || document;
+      var incEl = root.querySelector('[data-k="monthlyIncome"]');
+      var startEl = root.querySelector('[data-k="rentalStart"]');
+      if (rows.length) {
+        if (incEl) { incEl.value = money(inc); incEl.readOnly = true; incEl.classList.add('ro'); incEl.tabIndex = -1; }
+        if (startEl) { startEl.value = starts[0] || ''; startEl.readOnly = true; startEl.classList.add('ro'); startEl.tabIndex = -1; }
+      } else {
+        if (incEl) { incEl.readOnly = false; incEl.classList.remove('ro'); incEl.tabIndex = 0; }
+        if (startEl) { startEl.readOnly = false; startEl.classList.remove('ro'); startEl.tabIndex = 0; }
+      }
+    }
+    var add = host.querySelector('[data-uadd]');
+    if (add) add.onclick = function () { units.push({ name: '', rent: '', rentalStart: '', deposit: '' }); draw(); };
+    draw();
+    syncDerived();
+    return { read: read };
+  }
+
   function editFlip(f, kind, opts) {
     opts = opts || {};
     var isNew = !f; f = f || { investors: [], kind: kind || 'flip' };
@@ -856,12 +912,14 @@
       if (typ === 'area') return '<div class="field" style="grid-column:1/-1"><label>' + lab + '</label><textarea data-k="' + k + '" rows="2">' + esc(v == null ? '' : v) + '</textarea></div>';
       return '<div class="field"><label>' + lab + '</label><input data-k="' + k + '" type="' + (typ === 'date' ? 'date' : 'text') + '" ' + (typ === 'num' ? 'inputmode="decimal"' : '') + (ro ? ' readonly tabindex="-1" class="ro"' : '') + ' value="' + esc(v == null ? '' : v) + '"></div>';
     }).join('') + (led ? '<div class="field"><label>Cash Invested' + lock('Each partner’s purchase cash plus the expenses they paid, live from the expense entries — locked') + info('Each partner’s purchase cash plus the expenses they paid, live from the expense entries') + '</label><input class="ro" readonly tabindex="-1" value="' + esc(m2(cashIn)) + '"></div>' : '') + '</div>' +
+      (hold ? '<div class="field" style="grid-column:1/-1"><label>Units</label>' + unitsHtml() + '</div>' : '') +
       (isNew ? '<div class="field"><label>Status</label><select id="ed-status">' + SL.map(function (st) { return '<option' + (st === (hold ? 'Owned' : 'Active') ? ' selected' : '') + '>' + st + '</option>'; }).join('') + '</select></div>' : '') +
       '<div class="field"><label>Partners</label>' + partnersHtml(rows) + '</div>' +
       '<div class="row"><button type="button" class="btn gold" id="ed-save">Save</button>' + (host ? '' : '<button type="button" class="btn" id="ed-cancel">Cancel</button>') + '</div>' +
       (!isNew && own ? '<p class="meta" style="margin-top:16px"><button type="button" class="btn sm danger" id="ed-rmprop">Remove Property</button> Soft-deletes this ' + (hold ? 'holding' : 'flip') + '. Expense rows stay in the ledger unless you delete them separately.</p>' : '');
     var bind = function (root) {
       var P = bindPartners(root.querySelector('.prt'), rows, g.ledger);
+      var U = hold ? bindUnits(root.querySelector('#ed-units') || root, C.unitsOf ? C.unitsOf(f) : (f.units || [])) : null;
       var cx = root.querySelector('#ed-cancel');
       if (cx) cx.onclick = function () { if (host) exitEditMode(f); else closeModal(); };
       var rm = root.querySelector('#ed-rmprop');
@@ -901,6 +959,15 @@
         Object.keys(DERIVED).forEach(function (k) { delete body[k]; });
         var pr = P.read(); if (showPartnerError(root, pr.error)) return;
         if (isNew || !sameRows(rows, pr.rows)) body.investors = withMeta(f, pr.rows);
+        if (U) {
+          var unitRows = U.read();
+          body.units = unitRows;
+          if (unitRows.length) {
+            body.monthlyIncome = unitRows.reduce(function (s, u) { return s + C.n(u.rent); }, 0);
+            var starts = unitRows.map(function (u) { return u.rentalStart; }).filter(Boolean).sort();
+            if (starts.length) body.rentalStart = starts[0];
+          }
+        }
         var nst = root.querySelector('#ed-status'); if (nst) body.status = nst.value;
         if (isNew) body.kind = hold ? 'holding' : 'flip';
         btn.disabled = true;
@@ -1180,6 +1247,14 @@
   function catLines(map) {
     return Object.keys(map || {}).sort().map(function (k) { return [k, map[k]]; });
   }
+
+  function unitRentLines(rows) {
+    if (!rows || !rows.length) return '';
+    return rows.map(function (u) {
+      var lab = esc(u.name || 'Unit') + (u.monthsRented != null ? ' · ' + u.monthsRented + ' mo' : '') + (u.rentalStart ? ' · since ' + (fmtDate(u.rentalStart) || u.rentalStart) : '');
+      return '<div class="ln sub"><span class="lnl">' + lab + '</span><span class="num">' + money(u.rentToDate != null ? u.rentToDate : u.rent) + '</span></div>';
+    }).join('');
+  }
   function holdingGroupLines(yearRec) {
     var html = '', groups = [
       ['Recurring Holding Expenses', yearRec.recurring, yearRec.recurringByCategory],
@@ -1199,7 +1274,7 @@
     lines.push(row(['Property', f.address || '']));
     lines.push(row(['Tax Year', y + (yearRec.closed ? '' : ' YTD')]));
     lines.push(row(['Period', (yearRec.from || '') + ' to ' + (yearRec.to || '')]));
-    lines.push(row(['Months Rented', String(yearRec.monthsRented)]));
+    lines.push(row(['Months Rented (from earliest rented-since)', String(yearRec.monthsRented)]));
     lines.push(row(['Rent Collected', Number(yearRec.rent || 0).toFixed(2)]));
     lines.push(row(['Rental Expenses (Operating + Holding)', Number(yearRec.expenses || 0).toFixed(2)]));
     lines.push(row(['Recurring Holding Expenses', Number(yearRec.recurring || 0).toFixed(2)]));
@@ -1207,6 +1282,14 @@
     lines.push(row(['Net Cash Flow', Number(yearRec.net || 0).toFixed(2)]));
     if (deposits) lines.push(row(['Security Deposits Held (owed to tenants, not income)', Number(deposits).toFixed(2)]));
     lines.push(row(['Capital / Improvements (not in net cash flow)', Number(yearRec.capital || 0).toFixed(2)]));
+    if ((yearRec.units || []).length) {
+      lines.push('');
+      lines.push(row(['Rent By Unit']));
+      lines.push(row(['Unit', 'Rented Since', 'Months', 'Monthly Rent', 'Rent Collected', 'Deposit (liability, not income)']));
+      yearRec.units.forEach(function (u) {
+        lines.push(row([u.name || 'Unit', u.rentalStart || '', String(u.monthsRented || 0), Number(u.rent || 0).toFixed(2), Number(u.rentToDate || 0).toFixed(2), u.deposit != null && u.deposit !== '' ? Number(u.deposit).toFixed(2) : '']));
+      });
+    }
     lines.push('');
     lines.push(row(['Rental Expenses']));
     lines.push(row(['Date', 'Payee', 'Category', 'Class', 'Amount', 'Paid By', 'Method', 'Counts As', 'Notes']));
@@ -1235,8 +1318,9 @@
       var html = '';
       if (ytd) {
         html += '<div class="label">' + esc(ytd.year) + ' YTD</div><p class="sub2" style="margin:0 0 8px">' + (fmtDate(ytd.from) || ytd.from) + ' – ' + (fmtDate(ytd.to) || ytd.to) + ' · Rent collected from the rented-since date, expenses from dated Operating and Holding entries in ' + esc(ytd.year) + '.</p><div class="lines">';
-        html += ln('Months Rented', String(ytd.monthsRented), '', { lock: 'Whole months from the later of January 1 and the rented-since date, through today — locked' });
-        html += ln('Rent Collected', money(ytd.rent), '', { lock: 'Monthly rent × months rented in ' + ytd.year + ' — locked' });
+        html += ln('Months Rented', String(ytd.monthsRented), '', { lock: 'Payment months from the earliest unit rented-since date (or January 1) through today. Rent due on that day each month is counted, so 8/1–11/25 is 4 months (Aug–Nov) — locked' });
+        html += ln('Rent Collected', money(ytd.rent), '', { lock: 'Sum of each unit’s monthly rent × payment months in ' + ytd.year + ' (rent due on that unit’s rented-since day) — locked' });
+        html += unitRentLines(ytd.units);
         html += ln('Expenses Paid', money(ytd.expenses), '', { lock: 'Operating and Holding expense entries dated in ' + ytd.year + ' — locked' });
         html += holdingGroupLines(ytd);
         html += ln('Net Cash Flow', sMoney(ytd.net), 'tot', { lock: 'Rent collected minus dated Operating and Holding expenses in ' + ytd.year + ' — locked' });
@@ -1246,9 +1330,10 @@
       var sr = tax.sinceRented;
       if (sr && x.hasIncome) {
         html += '<div class="label">Since Rented</div><p class="sub2" style="margin:0 0 8px">Lifetime from the rented-since date, using monthly rent and monthly expenses (the run-rate). Dated expenses are in the YTD and tax-year figures above.</p><div class="lines">';
-        html += ln('Months Rented', x.monthsRented == null ? '—' : String(x.monthsRented), '', { lock: 'Whole months from the rented-since date — locked' });
-        html += ln('Rent Collected', money(x.rentToDate), '', { lock: 'Monthly rent × months rented — locked' });
-        html += ln('Cash Flow', sMoney(x.cashFlowToDate), 'tot', { lock: 'Monthly cash flow × months rented — locked' });
+        html += ln('Months Rented', x.monthsRented == null ? '—' : String(x.monthsRented), '', { lock: 'Payment months from the earliest unit rented-since date — locked' });
+        html += ln('Rent Collected', money(x.rentToDate), '', { lock: 'Sum of each unit’s monthly rent × that unit’s payment months since it was rented — locked' });
+        html += unitRentLines(x.units);
+        html += ln('Cash Flow', sMoney(x.cashFlowToDate), 'tot', { lock: 'Rent collected minus monthly expenses × property months rented (from the earliest unit start) — locked' });
         html += '</div>';
       }
       html += '<div class="label">Tax Year History</div>';
@@ -1257,7 +1342,7 @@
       } else {
         html += hist.map(function (yr) {
           return '<details class="taxyear"><summary><span>' + esc(yr.year) + ' · ' + (fmtDate(yr.from) || yr.from) + ' – ' + (fmtDate(yr.to) || yr.to) + '</span><span class="num">' + sMoney(yr.net) + ' net</span></summary><div class="lines">' +
-            ln('Months Rented', String(yr.monthsRented)) + ln('Rent Collected', money(yr.rent)) + ln('Expenses Paid', money(yr.expenses)) + holdingGroupLines(yr) +
+            ln('Months Rented', String(yr.monthsRented)) + ln('Rent Collected', money(yr.rent)) + unitRentLines(yr.units) + ln('Expenses Paid', money(yr.expenses)) + holdingGroupLines(yr) +
             ln('Net Cash Flow', sMoney(yr.net), 'tot') +
             (yr.capital ? ln('Improvements / Purchase Costs (Not In Net)', money(yr.capital)) : '') +
             '</div><div class="row" style="margin:8px 0 4px"><button type="button" class="btn sm" data-taxcsv="' + esc(yr.year) + '">Export ' + esc(yr.year) + ' CSV</button></div></details>';
@@ -1304,10 +1389,12 @@
       ln('Current Value', x.value ? money(x.value) : '<span class="pill warn">Needs Value</span>') + ln('Equity', sMoney(x.equity), 'tot', { lock: 'Current value minus loan balance — locked' }) + '</div></div>' +
       '<div class="card rule"><h2>Return</h2><div style="display:flex;justify-content:center;gap:18px;margin-top:10px">' +
       donut(x.equityRoi || 0, 1, pct(x.equityRoi, 0), 'Equity Gain', x.equityRoi == null ? 'gold' : (x.equityRoi >= 0 ? 'good' : 'bad')) + donut(x.cashOnCash || 0, 0.2, x.hasIncome ? pct(x.cashOnCash, 1) : '—', 'Cash-On-Cash', 'gold') + '</div>' +
-      '<hr class="sep"><div class="mini"><div>Purchased' + info(f.datesNote || '', 'h:Dates') + '<b>' + (fmtDate(f.purchaseDate) || '<span class="pill warn">Needs Date</span>') + '</b></div><div>Rented Since<b>' + (fmtDate(f.rentalStart) || fmtDate(f.purchaseDate) || '—') + '</b></div><div>Months Held' + lock('Calculated from the purchase date — locked') + '<b>' + (x.monthsHeld == null ? '—' : x.monthsHeld) + '</b></div><div>Months Rented' + lock('Whole months from the rented-since date — locked') + '<b>' + (x.monthsRented == null ? '—' : x.monthsRented) + '</b></div><div>Value Vs All-In' + lock('Current value minus all-in cost — locked') + '<b>' + sMoney(x.value ? x.value - x.allIn : 0, 0) + '</b></div></div></div></div>';
+      '<hr class="sep"><div class="mini"><div>Purchased' + info(f.datesNote || '', 'h:Dates') + '<b>' + (fmtDate(f.purchaseDate) || '<span class="pill warn">Needs Date</span>') + '</b></div><div>Rented Since' + lock('Earliest unit rented-since date — locked') + '<b>' + (fmtDate(x.rentalStart || f.rentalStart) || fmtDate(f.purchaseDate) || '—') + '</b></div><div>Months Held' + lock('Calculated from the purchase date — locked') + '<b>' + (x.monthsHeld == null ? '—' : x.monthsHeld) + '</b></div><div>Months Rented' + lock('Payment months from the earliest unit rented-since date. Rent due on that day each month is counted — locked') + '<b>' + (x.monthsRented == null ? '—' : x.monthsRented) + '</b></div><div>Value Vs All-In' + lock('Current value minus all-in cost — locked') + '<b>' + sMoney(x.value ? x.value - x.allIn : 0, 0) + '</b></div></div></div></div>';
     html += '<div class="card rule rentcard" style="margin-top:16px"><h2>Rent And Cash Flow</h2><div class="lines">' +
-      ln('Monthly Rent', x.rent ? money(x.rent) : '<span class="pill warn">Needs Data</span>') + ln('Monthly Expenses', x.expenses ? money(x.expenses) : '<span class="pill warn">Needs Data</span>') + ln('Monthly Cash Flow', x.hasIncome ? sMoney(x.monthlyCashFlow) : '<span class="pill warn">Needs Data</span>', 'tot', { lock: 'Rent minus monthly expenses — locked' }) + (x.hasIncome ? ln('Annual NOI (No Mortgage)', sMoney(x.noi), 'tot', { lock: 'Monthly cash flow × 12 — locked' }) : '') +
-      ln('Rented Since', fmtDate(f.rentalStart || f.purchaseDate) || '<span class="pill warn">Needs Date</span>') + '</div>' +
+      ln('Monthly Rent', x.rent ? money(x.rent) : '<span class="pill warn">Needs Data</span>', '', { lock: (x.units && x.units.length) ? 'Sum of unit rents — locked' : 'Monthly rent — locked' }) +
+      (x.units && x.units.length ? x.units.map(function (u) { return '<div class="ln sub"><span class="lnl">' + esc(u.name || 'Unit') + (u.rentalStart ? ' · since ' + (fmtDate(u.rentalStart) || u.rentalStart) : '') + '</span><span class="num">' + money(u.rent) + '</span></div>'; }).join('') : '') +
+      ln('Monthly Expenses', x.expenses ? money(x.expenses) : '<span class="pill warn">Needs Data</span>') + ln('Monthly Cash Flow', x.hasIncome ? sMoney(x.monthlyCashFlow) : '<span class="pill warn">Needs Data</span>', 'tot', { lock: 'Rent minus monthly expenses — locked' }) + (x.hasIncome ? ln('Annual NOI (No Mortgage)', sMoney(x.noi), 'tot', { lock: 'Monthly cash flow × 12 — locked' }) : '') +
+      ln('Rented Since', fmtDate(x.rentalStart || f.rentalStart || f.purchaseDate) || '<span class="pill warn">Needs Date</span>', '', { lock: 'Earliest unit rented-since date — locked' }) + '</div>' +
       '<div id="renttax" class="renttax"><p class="meta">Loading year-to-date…</p></div>' +
       (depositsHeld(f) ? '<div class="lines">' + ln('Security Deposits Held (Owed To Tenants)', money(depositsHeld(f)), '', { lock: 'A liability owed back to tenants, not rental income — locked' }) + '</div>' : '') + '</div>';
     if (isOwner()) html += '<div class="label">Expenses</div><div id="proex"></div>';

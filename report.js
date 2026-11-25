@@ -171,13 +171,17 @@
     R.section('The Numbers');
     var rows = [['Purchase Price', money(f.purchasePrice)], ['Closing Costs', money(f.buyClosingCosts)], ['Improvements Spent', money(f.rehabSpent)], ['All-In Cost', money(x.allIn), true],
       ['Original Loan' + (f.lender ? ' · ' + f.lender : ''), money(f.loanAmount)], ['Current Loan Balance', money(x.loanBalance)], ['Cash Invested', money(x.cashInvested), true],
-      ['Current Value', x.value ? money(x.value) : 'Needs value'], ['Equity', money(x.equity), true], ['Monthly Rent', x.rent ? money(x.rent) : 'Needs data'], ['Monthly Expenses', x.expenses ? money(x.expenses) : 'Needs data'], ['Monthly Cash Flow', x.hasIncome ? money(x.monthlyCashFlow) : 'Needs data', true]];
+      ['Current Value', x.value ? money(x.value) : 'Needs value'], ['Equity', money(x.equity), true], ['Monthly Rent', x.rent ? money(x.rent) : 'Needs data']];
+    (x.units || []).forEach(function (u) { rows.push(['  ' + (u.name || 'Unit') + (u.rentalStart ? ' · since ' + (fdate(u.rentalStart) || u.rentalStart) : ''), money(u.rent)]); });
+    rows.push(['Monthly Expenses', x.expenses ? money(x.expenses) : 'Needs data'], ['Monthly Cash Flow', x.hasIncome ? money(x.monthlyCashFlow) : 'Needs data', true]);
     if (x.hasIncome) rows.push(['Annual NOI (No Mortgage)', money(x.noi), true]);
-    rows.push(['Rented Since', fdate(f.rentalStart || f.purchaseDate) || 'Needs date']);
+    rows.push(['Rented Since', fdate((x.rentalStart || f.rentalStart) || f.purchaseDate) || 'Needs date']);
     R.lines(rows);
     var ty = d.taxYears, ytd = ty && ty.ytd, hist = ty && ty.history || [];
     if (ytd) {
-      var yrows = [['Months Rented', String(ytd.monthsRented)], ['Rent Collected', money(ytd.rent)], ['Expenses Paid', money(ytd.expenses)]];
+      var yrows = [['Months Rented', String(ytd.monthsRented)], ['Rent Collected', money(ytd.rent)]];
+      (ytd.units || []).forEach(function (u) { yrows.push(['  ' + (u.name || 'Unit') + (u.monthsRented != null ? ' · ' + u.monthsRented + ' mo' : ''), money(u.rentToDate)]); });
+      yrows.push(['Expenses Paid', money(ytd.expenses)]);
       if (ytd.recurring) {
         yrows.push(['  Recurring Holding Expenses', money(ytd.recurring)]);
         Object.keys(ytd.recurringByCategory || {}).sort().forEach(function (k) { yrows.push(['    ' + k, money(ytd.recurringByCategory[k])]); });
@@ -193,10 +197,15 @@
     }
     if (x.hasIncome) {
       R.section('Since Rented');
-      R.lines([['Months Rented', x.monthsRented == null ? '-' : String(x.monthsRented)], ['Rent Collected', money(x.rentToDate)], ['Cash Flow (monthly rent and expenses)', money(x.cashFlowToDate), true]]);
+      var srows = [['Months Rented', x.monthsRented == null ? '-' : String(x.monthsRented)], ['Rent Collected', money(x.rentToDate)]];
+      (x.units || []).forEach(function (u) { srows.push(['  ' + (u.name || 'Unit') + (u.monthsRented != null ? ' · ' + u.monthsRented + ' mo' : ''), money(u.rentToDate)]); });
+      srows.push(['Cash Flow (rent collected minus monthly expenses × months)', money(x.cashFlowToDate), true]);
+      R.lines(srows);
     }
     hist.forEach(function (yr) {
-      var hrows = [['Months Rented', String(yr.monthsRented)], ['Rent Collected', money(yr.rent)], ['Expenses Paid', money(yr.expenses)]];
+      var hrows = [['Months Rented', String(yr.monthsRented)], ['Rent Collected', money(yr.rent)]];
+      (yr.units || []).forEach(function (u) { hrows.push(['  ' + (u.name || 'Unit') + (u.monthsRented != null ? ' · ' + u.monthsRented + ' mo' : ''), money(u.rentToDate)]); });
+      hrows.push(['Expenses Paid', money(yr.expenses)]);
       if (yr.recurring) {
         hrows.push(['  Recurring Holding Expenses', money(yr.recurring)]);
         Object.keys(yr.recurringByCategory || {}).sort().forEach(function (k) { hrows.push(['    ' + k, money(yr.recurringByCategory[k])]); });
