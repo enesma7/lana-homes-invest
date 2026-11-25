@@ -267,7 +267,10 @@
     // If it is empty, any inferred purchase-side credit is still sitting inside adjustments and must be excluded from net.
     var exclude = pc ? 0 : purchaseCreditsOf(f, L);
     if (afterOpen) saleRows.push([f.otherCostsLabel || 'Costs After Closing', -afterOpen, 'After-sale costs not paid through the sale escrow']);
+    // Show inferred credits (still inside adjustments) as an exclusion line. After migration, show the structured
+    // purchaseCredits amount the same way for transparency, but do not subtract it from net again (it is already out of adj).
     if (exclude) saleRows.push(['Purchase Credits (Already In Cash In)', -exclude, 'Purchase-side credits reduced cash to purchase and are not added to sale Net Proceeds']);
+    else if (pc) saleRows.push(['Purchase Credits', -pc, 'Already reflected in cash in and left out of sale Net Proceeds; not subtracted again']);
     var net = r2(sale - loan - L.atSaleTotal + adj - afterOpen - exclude), toPartners = r2(capTotal + x.profit), diff = r2(toPartners - net);
     if (Math.abs(diff) >= 0.01) saleRows.push(['Settled Outside The Sale Escrow', diff, 'Costs in the totals not paid by a partner or the sale escrow']);
     var paid = inv.map(function (i) {
