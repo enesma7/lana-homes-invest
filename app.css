@@ -390,3 +390,5 @@ tr.erow{cursor:pointer}
 tr.erow:hover td{background:#FAFAFC}
 tr.erow:hover td:last-child{background:#FAFAFC}
 .field .ro+button,.field button[data-close-open]{margin-top:6px}
+
+.perr{margin:8px 0 0;color:var(--red2,#9A0007);font-size:13px;font-weight:600}

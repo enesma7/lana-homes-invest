@@ -293,10 +293,10 @@
   function modal(html, onReady) { var m = document.getElementById('modal'); m.innerHTML = '<div class="box">' + html + '</div>'; m.hidden = false; m.onclick = function (e) { if (e.target === m) closeModal(); }; if (onReady) onReady(m); }
   function closeModal() { var m = document.getElementById('modal'); m.hidden = true; m.innerHTML = ''; }
   function confirmBox(title, body, okLabel, onOk, altLabel, onAlt) {
-    modal('<h2>' + esc(title) + '</h2>' + body + '<div class="row" style="margin-top:16px"><button class="btn gold" id="ok">' + esc(okLabel) + '</button>' + (altLabel ? '<button class="btn" id="alt">' + esc(altLabel) + '</button>' : '') + '<button class="btn" id="cx">Cancel</button></div>', function () {
-      document.getElementById('ok').onclick = function () { closeModal(); onOk(); };
-      if (altLabel) document.getElementById('alt').onclick = function () { closeModal(); onAlt(); };
-      document.getElementById('cx').onclick = closeModal;
+    modal('<h2>' + esc(title) + '</h2>' + body + '<div class="row" style="margin-top:16px"><button type="button" class="btn gold" id="m-ok">' + esc(okLabel) + '</button>' + (altLabel ? '<button type="button" class="btn" id="m-alt">' + esc(altLabel) + '</button>' : '') + '<button type="button" class="btn" id="m-cx">Cancel</button></div>', function (m) {
+      m.querySelector('#m-ok').onclick = function () { closeModal(); onOk(); };
+      var alt = m.querySelector('#m-alt'); if (alt) alt.onclick = function () { closeModal(); onAlt(); };
+      m.querySelector('#m-cx').onclick = closeModal;
     });
   }
 
@@ -395,15 +395,17 @@
     var f = TIPS && TIPS.f; if (!f || !isOwner()) return;
     var m = f.tips || {}, has = Object.prototype.hasOwnProperty.call(m, key), cur = has ? m[key] : def;
     modal('<h2>(i) Note</h2><p class="sub2">' + esc(key.replace(/^[a-z]+:/, '')) + ' · ' + esc(f.address) + '</p><div class="field"><textarea id="tipt" rows="4" placeholder="Leave empty to hide the (i)">' + esc(cur) + '</textarea></div>' +
-      '<div class="row"><button class="btn gold" id="ok">Save</button>' + (def && has ? '<button class="btn" id="tdef">Reset To Default</button>' : '') + '<button class="btn" id="cx">Cancel</button></div>', function () {
+      '<div class="row"><button type="button" class="btn gold" id="tip-ok">Save</button>' + (def && has ? '<button type="button" class="btn" id="tdef">Reset To Default</button>' : '') + '<button type="button" class="btn" id="tip-cx">Cancel</button></div>', function (m) {
       var done = function (r) { f.tips = r.tips || {}; closeModal(); toast('Saved.'); S.flips = null; viewFlip(f.id); };
-      document.getElementById('cx').onclick = closeModal;
-      document.getElementById('ok').onclick = function () { api('setTip', { flipId: f.id, key: key, text: document.getElementById('tipt').value.trim() }).then(done).catch(function (e) { fail(e.code === 'BAD_REQUEST' && /Unknown action/i.test(e.message) ? new Error('Editing (i) notes turns on with the backend update (1.4.0).') : e); }); };
+      m.querySelector('#tip-cx').onclick = closeModal;
+      m.querySelector('#tip-ok').onclick = function () { api('setTip', { flipId: f.id, key: key, text: m.querySelector('#tipt').value.trim() }).then(done).catch(function (e) { fail(e.code === 'BAD_REQUEST' && /Unknown action/i.test(e.message) ? new Error('Editing (i) notes turns on with the backend update (1.4.0).') : e); }); };
       var d = document.getElementById('tdef'); if (d) d.onclick = function () { api('setTip', { flipId: f.id, key: key, reset: true }).then(done).catch(fail); };
     });
   }
   // One Edit button for the owner (and flip admins who can change numbers). While it reads “Done Editing”,
   // (i) notes are editable and — on a flip or holding — the numbers form (with Remove Property) is open on the page.
+  try { sessionStorage.removeItem('fl_tipedit'); } catch (e) {}
+  var pageEdit = false;   // in-memory only: a reload leaves Edit off
   function tipToggle(opts) {
     opts = opts || {};
     var canNotes = isOwner(), canNums = !!opts.can;
@@ -415,12 +417,12 @@
   function bindTipToggle(f, opts) {
     opts = opts || {};
     var b = document.getElementById('tipm');
-    if (b) b.onclick = function () { sessionStorage.setItem('fl_tipedit', (TIPS && TIPS.edit) ? '' : '1'); viewFlip(f.id); };
+    if (b) b.onclick = function () { pageEdit = !(TIPS && TIPS.edit); viewFlip(f.id); };
     var panel = document.getElementById('edpanel');
     if (panel && TIPS && TIPS.edit && opts.can) editFlip(f, null, { host: panel });
   }
   function exitEditMode(f) {
-    sessionStorage.setItem('fl_tipedit', '');
+    pageEdit = false;
     if (f && f.id) viewFlip(f.id);
   }
   function kpi(k, v, sub, tone, ring) {
@@ -490,7 +492,7 @@
     getFlipLive(id).then(function (f) {
       if (isHolding(f)) { setMode('holdings'); return renderHolding(f); }
       setMode('flips');
-      TIPS = { f: f, edit: !!sessionStorage.getItem('fl_tipedit') && (isOwner() || f.canManage) };
+      TIPS = { f: f, edit: !!pageEdit && (isOwner() || f.canManage) };
       var x = C.flip(f, todayISO()), sold = f.status === 'Sold', can = f.canManage, own = isOwner();
       markTab(sold ? '#/archive' : '#/flips');
       var ln = function (k, v, cls, opts) {
@@ -539,13 +541,21 @@
       var st = document.getElementById('st');
       if (st) st.onchange = function () {
         var s = st.value;
-        var go = function (saleDate) { api('setStatus', { id: f.id, status: s, saleDate: saleDate || '' }).then(function () { toast('Status set to ' + s + (s === 'Sold' ? '. Moved to the Archive.' : '.')); S.flips = null; viewFlip(f.id); }).catch(function (e) { fail(e); st.value = f.status; }); };
+        var go = function (saleDate, salePrice) {
+          var p = api('setStatus', { id: f.id, status: s, saleDate: saleDate || '' });
+          if (s === 'Sold' && salePrice != null && salePrice !== '') p = p.then(function () { return api('updateFlip', { id: f.id, flip: { salePrice: salePrice } }); });
+          p.then(function () { toast('Status set to ' + s + (s === 'Sold' ? '. Moved to the Archive.' : '.')); S.flips = null; viewFlip(f.id); }).catch(function (e) { fail(e); st.value = f.status; });
+        };
         if (s === 'In Escrow' && f.status !== 'In Escrow' && can) {
           partnersPrompt(f, 'Who Are The Partners?', 'Save And Move To In Escrow', function () { go(); }, function () { st.value = f.status; });
         } else if (s === 'Sold') {
-          modal('<h2>Mark As Sold</h2><p class="sub2">Sold flips move to the Archive. Add the sale close date so hold time and annualized return can be computed, or leave it blank to flag it as Needs Date.</p><div class="field"><label>Sale Close Date</label><input type="date" id="sd" value="' + esc(f.saleDate || '') + '"></div><div class="row"><button class="btn gold" id="ok">Mark Sold</button><button class="btn" id="cx">Cancel</button></div>', function () {
-            document.getElementById('ok').onclick = function () { var v = document.getElementById('sd').value; closeModal(); go(v); };
-            document.getElementById('cx').onclick = function () { closeModal(); st.value = f.status; };
+          modal('<h2>Mark As Sold</h2><p class="sub2">Sold flips move to the Archive. Add the sale close date and confirm the sale price. You can leave the date blank to flag it as Needs Date.</p><div class="field"><label>Sale Close Date</label><input type="date" id="sd" value="' + esc(f.saleDate || '') + '"></div><div class="field"><label>Sale Price</label><input id="sp" inputmode="decimal" value="' + esc(f.salePrice != null && f.salePrice !== '' ? m2(f.salePrice) : '') + '"></div><div class="row"><button type="button" class="btn gold" id="sold-ok">Mark Sold</button><button type="button" class="btn" id="sold-cx">Cancel</button></div>', function (m) {
+            m.querySelector('#sold-ok').onclick = function () {
+              var d = m.querySelector('#sd').value, raw = m.querySelector('#sp').value, price = raw;
+              if (/^\$|^−\$|^-\$/.test(price)) price = String(C.n(String(price).replace('−', '-')));
+              closeModal(); go(d, raw === '' ? null : C.n(price));
+            };
+            m.querySelector('#sold-cx').onclick = function () { closeModal(); st.value = f.status; };
           });
         } else go();
       };
@@ -576,9 +586,9 @@
     };
     host.querySelectorAll('[data-te]').forEach(function (b) { b.onclick = function () {
       var c = list.filter(function (x) { return x.id === b.dataset.te; })[0];
-      modal('<h2>Edit Note</h2><div class="field"><textarea id="tedit" rows="4">' + esc(c.text) + '</textarea></div><div class="row"><button class="btn gold" id="ok">Save</button><button class="btn" id="cx">Cancel</button></div>', function () {
-        document.getElementById('cx').onclick = closeModal;
-        document.getElementById('ok').onclick = function () { api('updateComment', { id: c.id, text: document.getElementById('tedit').value }).then(function () { closeModal(); toast('Saved.'); reload(); }).catch(fail); };
+      modal('<h2>Edit Note</h2><div class="field"><textarea id="tedit" rows="4">' + esc(c.text) + '</textarea></div><div class="row"><button type="button" class="btn gold" id="tnote-ok">Save</button><button type="button" class="btn" id="tnote-cx">Cancel</button></div>', function (m) {
+        m.querySelector('#tnote-cx').onclick = closeModal;
+        m.querySelector('#tnote-ok').onclick = function () { api('updateComment', { id: c.id, text: m.querySelector('#tedit').value }).then(function () { closeModal(); toast('Saved.'); reload(); }).catch(fail); };
       });
     }; });
     host.querySelectorAll('[data-td]').forEach(function (b) { b.onclick = function () { confirmBox('Delete Note', '<p>Remove this note?</p>', 'Delete', function () { api('deleteComment', { id: b.dataset.td }).then(function () { toast('Deleted.'); reload(); }).catch(fail); }); }; });
@@ -602,9 +612,9 @@
     modal('<h2>Invite User To ' + esc(f.address) + '</h2><p class="sub2">They’ll get an email invite and sign in with a one-time code. They only see the properties they’re invited to.</p>' +
       '<div class="field"><label>Email</label><input type="email" id="iem" required></div><div class="field"><label>Name (Optional)</label><input id="inm"></div>' +
       (isOwner() ? '<div class="field"><label>Role On This Flip</label><select id="irl"><option value="member">Member — View Only</option><option value="admin">Admin — Status, Numbers, Invites On This Property</option></select></div>' : '') +
-      '<div class="row"><button class="btn gold" id="ok">Send Invite</button><button class="btn" id="cx">Cancel</button></div>', function () {
-      document.getElementById('cx').onclick = closeModal;
-      document.getElementById('ok').onclick = function () {
+      '<div class="row"><button type="button" class="btn gold" id="invite-ok">Send Invite</button><button type="button" class="btn" id="invite-cx">Cancel</button></div>', function (m) {
+      m.querySelector('#invite-cx').onclick = closeModal;
+      m.querySelector('#invite-ok').onclick = function () {
         var b = this; b.disabled = true; var rl = document.getElementById('irl');
         api('inviteUser', { flipId: f.id, email: document.getElementById('iem').value, name: document.getElementById('inm').value, role: rl ? rl.value : 'member' })
           .then(function () { closeModal(); toast('Invite sent.'); viewFlip(f.id); }).catch(fail).then(function () { b.disabled = false; });
@@ -631,10 +641,16 @@
   /* ---------- Partners: one row per partner (Name, Profit/Loss % auto or Override, optional note) ---------- */
   function pctTxt(v) { return (Math.round(v * 10000) / 100).toFixed(2) + '%'; }
   function partnerRowsOf(f) { return (f.investors || []).filter(function (i) { return i && !i.payout && !i.meta; }); }
+  function showPartnerError(root, err) {
+    var el = root && root.querySelector('[data-perr]');
+    if (el) { el.hidden = !err; el.textContent = err || ''; }
+    if (err) toast(err, true);
+    return !!err;
+  }
   function partnersHtml(rows, opts) {
     opts = opts || {};
     return '<div class="prt" data-names-only="' + (opts.namesOnly ? '1' : '') + '"><div class="prows"></div>' +
-      '<div class="prt-foot"><button type="button" class="btn sm" data-padd>+ Add Partner</button><div class="prt-tot"><span>Total Cash In' + lock('Sum of each partner’s purchase cash and the expenses they paid — locked') + '</span><b class="num" data-ptot>$0.00</b><span>Split' + lock('Total of the split percentages — must equal 100%') + '</span><b class="num" data-psplit>0.00%</b></div></div></div>';
+      '<p class="perr" data-perr hidden></p><div class="prt-foot"><button type="button" class="btn sm" data-padd>+ Add Partner</button><div class="prt-tot"><span>Total Cash In' + lock('Sum of each partner’s purchase cash and the expenses they paid — locked') + '</span><b class="num" data-ptot>$0.00</b><span>Split' + lock('Total of the split percentages — must equal 100%') + '</span><b class="num" data-psplit>0.00%</b></div></div></div>';
   }
   // Binds the rows editor inside host. ledger = the property's live ledger (expenses each partner paid). Returns { read() }.
   function bindPartners(host, rows, ledger, opts) {
@@ -703,7 +719,7 @@
           if (s.auto) o.splitMode = 'auto';
           sp += o.split; out.push(o);
         }
-        if (!out.length) return { error: 'Add at least one partner.' };
+        if (!out.length) return { rows: [] };
         if (Math.abs(sp - 1) > 0.0001) return { error: 'The profit/loss splits add up to ' + pctTxt(sp) + '. They must total 100%.' };
         return { rows: out };
       }
@@ -719,12 +735,12 @@
   function partnersPrompt(f, title, okLabel, onDone, onCancel) {
     var rows = partnerRowsOf(f);
     modal('<h2>' + esc(title) + '</h2><p class="sub2">' + esc(f.address || '') + '</p><div class="field"><label>Partners</label>' + partnersHtml(rows, { namesOnly: true }) + '</div>' +
-      '<div class="row"><button class="btn gold" id="ok">' + esc(okLabel) + '</button>' + (onCancel ? '<button class="btn" id="cx">Cancel</button>' : '') + '</div>', function (m) {
+      '<div class="row"><button type="button" class="btn gold" id="ppr-ok">' + esc(okLabel) + '</button>' + (onCancel ? '<button type="button" class="btn" id="ppr-cx">Cancel</button>' : '') + '</div>', function (m) {
       m.onclick = null;   // required: tapping outside does not close it
       var P = bindPartners(m.querySelector('.prt'), rows, f.ledger, { namesOnly: true });
-      var cx = document.getElementById('cx'); if (cx) cx.onclick = function () { closeModal(); onCancel(); };
-      document.getElementById('ok').onclick = function () {
-        var r = P.read(); if (r.error) return toast(r.error, true);
+      var cx = m.querySelector('#ppr-cx'); if (cx) cx.onclick = function () { closeModal(); onCancel(); };
+      m.querySelector('#ppr-ok').onclick = function () {
+        var r = P.read(); if (showPartnerError(m, r.error)) return;
         var b = this; b.disabled = true;
         var send = sameRows(rows, r.rows) ? Promise.resolve() : api('updateFlip', { id: f.id, flip: { investors: withMeta(f, r.rows) } });
         send.then(function () { closeModal(); S.flips = null; onDone(); }).catch(function (e) { fail(e); b.disabled = false; });
@@ -737,11 +753,11 @@
     var rows = partnerRowsOf(g);
     modal('<h2>Investors</h2><p class="sub2">' + esc(f.address || '') + '. Add or remove partners and set each split. The percentages must add up to 100%.</p>' +
       '<div class="field"><label>Partners / Investors</label>' + partnersHtml(rows) + '</div>' +
-      '<div class="row"><button type="button" class="btn gold" id="ok">Save</button><button type="button" class="btn" id="cx">Cancel</button></div>', function (m) {
+      '<div class="row"><button type="button" class="btn gold" id="invs-ok">Save</button><button type="button" class="btn" id="invs-cx">Cancel</button></div>', function (m) {
       var P = bindPartners(m.querySelector('.prt'), rows, g.ledger);
-      document.getElementById('cx').onclick = closeModal;
-      document.getElementById('ok').onclick = function () {
-        var pr = P.read(); if (pr.error) return toast(pr.error, true);
+      m.querySelector('#invs-cx').onclick = closeModal;
+      m.querySelector('#invs-ok').onclick = function () {
+        var pr = P.read(); if (showPartnerError(m, pr.error)) return;
         if (sameRows(rows, pr.rows)) { closeModal(); toast('No changes.'); return; }
         var btn = this; btn.disabled = true;
         api('updateFlip', { id: f.id, flip: { investors: withMeta(f, pr.rows) } })
@@ -774,12 +790,12 @@
           }).join('') : '<tr><td colspan="' + (own ? 5 : 4) + '" class="empty">No line items yet. The total stays $0.00 until you add one.</td></tr>') +
           '</tbody></table></div>' +
           '<div class="spread" style="margin-top:12px;align-items:center"><div><span class="meta">Total</span>' + lock('Sum of the line items — locked') + ' <b class="num">' + money(tot) + '</b></div>' +
-          (own ? '<div class="row"><button type="button" class="btn gold" id="cadd">Add Line Item</button><button type="button" class="btn" id="cx">Done</button></div>' : '<button type="button" class="btn" id="cx">Close</button>') + '</div>', function () {
-          document.getElementById('cx').onclick = function () { closeModal(); if (reopen !== false) viewFlip(f.id); };
-          var add = document.getElementById('cadd');
+          (own ? '<div class="row"><button type="button" class="btn gold" id="cadd">Add Line Item</button><button type="button" class="btn" id="close-done">Done</button></div>' : '<button type="button" class="btn" id="close-done">Close</button>') + '</div>', function (m) {
+          m.querySelector('#close-done').onclick = function () { closeModal(); if (reopen !== false) viewFlip(f.id); };
+          var add = m.querySelector('#cadd');
           if (add) add.onclick = function () { closeModal(); editExpense({ date: todayISO(), payee: '', category: 'Closing Costs', amount: '', method: '', phase: kind, linkType: 'flip', linkId: f.id }, f, { phase: kind, after: function () { openClosingItems(f, kind); } }); };
-          document.querySelectorAll('[data-ce]').forEach(function (b) { b.onclick = function () { var row = items.filter(function (e) { return e.id === b.dataset.ce; })[0]; closeModal(); editExpense(row, f, { after: function () { openClosingItems(f, kind); } }); }; });
-          document.querySelectorAll('[data-cd]').forEach(function (b) { b.onclick = function () { confirmBox('Remove Line Item', '<p>Remove this line from ' + esc(label) + '? The locked total will update right away.</p>', 'Remove', function () { api('deleteExpense', { id: b.dataset.cd }).then(function () { expensesChanged(); toast('Removed.'); openClosingItems(f, kind); }).catch(fail); }); }; });
+          m.querySelectorAll('[data-ce]').forEach(function (b) { b.onclick = function () { var row = items.filter(function (e) { return e.id === b.dataset.ce; })[0]; closeModal(); editExpense(row, f, { after: function () { openClosingItems(f, kind); } }); }; });
+          m.querySelectorAll('[data-cd]').forEach(function (b) { b.onclick = function () { confirmBox('Remove Line Item', '<p>Remove this line from ' + esc(label) + '? The locked total will update right away.</p>', 'Remove', function () { api('deleteExpense', { id: b.dataset.cd }).then(function () { expensesChanged(); toast('Removed.'); openClosingItems(f, kind); }).catch(fail); }); }; });
         });
       }).catch(fail);
     };
@@ -802,21 +818,21 @@
       if (typ === 'area') return '<div class="field" style="grid-column:1/-1"><label>' + lab + '</label><textarea data-k="' + k + '" rows="2">' + esc(v == null ? '' : v) + '</textarea></div>';
       return '<div class="field"><label>' + lab + '</label><input data-k="' + k + '" type="' + (typ === 'date' ? 'date' : 'text') + '" ' + (typ === 'num' ? 'inputmode="decimal"' : '') + (ro ? ' readonly tabindex="-1" class="ro"' : '') + ' value="' + esc(v == null ? '' : v) + '"></div>';
     }).join('') + (led ? '<div class="field"><label>Cash Invested' + lock('Each partner’s purchase cash plus the expenses they paid, live from the expense entries — locked') + info('Each partner’s purchase cash plus the expenses they paid, live from the expense entries') + '</label><input class="ro" readonly tabindex="-1" value="' + esc(m2(cashIn)) + '"></div>' : '') + '</div>' +
-      (isNew ? '<div class="field"><label>Status</label><select id="nst">' + SL.map(function (st) { return '<option' + (st === (hold ? 'Owned' : 'Active') ? ' selected' : '') + '>' + st + '</option>'; }).join('') + '</select></div>' : '') +
+      (isNew ? '<div class="field"><label>Status</label><select id="ed-status">' + SL.map(function (st) { return '<option' + (st === (hold ? 'Owned' : 'Active') ? ' selected' : '') + '>' + st + '</option>'; }).join('') + '</select></div>' : '') +
       '<div class="field"><label>Partners</label>' + partnersHtml(rows) + '</div>' +
-      '<div class="row"><button type="button" class="btn gold" id="ok">Save</button>' + (host ? '' : '<button type="button" class="btn" id="cx">Cancel</button>') + '</div>' +
-      (!isNew && own ? '<p class="meta" style="margin-top:16px"><button type="button" class="btn sm danger" id="rmprop">Remove Property</button> Soft-deletes this ' + (hold ? 'holding' : 'flip') + '. Expense rows stay in the ledger unless you delete them separately.</p>' : '');
+      '<div class="row"><button type="button" class="btn gold" id="ed-save">Save</button>' + (host ? '' : '<button type="button" class="btn" id="ed-cancel">Cancel</button>') + '</div>' +
+      (!isNew && own ? '<p class="meta" style="margin-top:16px"><button type="button" class="btn sm danger" id="ed-rmprop">Remove Property</button> Soft-deletes this ' + (hold ? 'holding' : 'flip') + '. Expense rows stay in the ledger unless you delete them separately.</p>' : '');
     var bind = function (root) {
       var P = bindPartners(root.querySelector('.prt'), rows, g.ledger);
-      var cx = root.querySelector('#cx');
+      var cx = root.querySelector('#ed-cancel');
       if (cx) cx.onclick = function () { if (host) exitEditMode(f); else closeModal(); };
-      var rm = root.querySelector('#rmprop');
+      var rm = root.querySelector('#ed-rmprop');
       if (rm) rm.onclick = function () {
         confirmBox('Remove Property', '<p>Soft-delete <b>' + esc(f.address) + '</b>? It will disappear from Flips and Holdings. This does not edit other deals.</p>', 'Remove', function () {
-          api('deleteFlip', { id: f.id }).then(function () { sessionStorage.setItem('fl_tipedit', ''); S.flips = null; closeModal(); toast('Removed.'); location.hash = hold ? '#/holdings' : '#/flips'; }).catch(fail);
+          api('deleteFlip', { id: f.id }).then(function () { pageEdit = false; S.flips = null; closeModal(); toast('Removed.'); location.hash = hold ? '#/holdings' : '#/flips'; }).catch(fail);
         });
       };
-      root.querySelector('#ok').onclick = function () {
+      root.querySelector('#ed-save').onclick = function () {
         var btn = this, body = {}; root.querySelectorAll('[data-k]').forEach(function (el) { if (!el.readOnly) body[el.dataset.k] = el.value; });
         Object.keys(body).forEach(function (k) { if (/^\$|^−\$|^-\$/.test(body[k])) body[k] = String(C.n(String(body[k]).replace('−', '-'))); });
         var bootstrap = {};
@@ -826,9 +842,9 @@
           });
         }
         Object.keys(DERIVED).forEach(function (k) { delete body[k]; });
-        var pr = P.read(); if (pr.error) return toast(pr.error, true);
+        var pr = P.read(); if (showPartnerError(root, pr.error)) return;
         if (isNew || !sameRows(rows, pr.rows)) body.investors = withMeta(f, pr.rows);
-        var nst = root.querySelector('#nst'); if (nst) body.status = nst.value;
+        var nst = root.querySelector('#ed-status'); if (nst) body.status = nst.value;
         if (isNew) body.kind = hold ? 'holding' : 'flip';
         btn.disabled = true;
         (isNew ? api('createFlip', { flip: body }) : api('updateFlip', { id: f.id, flip: body })).then(function (r) {
@@ -869,9 +885,9 @@
       item = item || {};
       modal('<h2>' + (item.id ? 'Edit Item' : 'Add Inventory Needs List Item') + '</h2><div class="calcgrid">' +
         [['material', 'Material'], ['quantity', 'Quantity'], ['unitPrice', 'Price Per Unit'], ['sku', 'Item / Internet #'], ['link', 'Link (https://…)'], ['status', 'Status (e.g. Purchased)']].map(function (x) { return '<div class="field"><label>' + x[1] + '</label><input data-k="' + x[0] + '" value="' + esc(item[x[0]] == null ? '' : item[x[0]]) + '"></div>'; }).join('') +
-        '</div><div class="field"><label>Notes</label><input data-k="notes" value="' + esc(item.notes || '') + '"></div><div class="row"><button class="btn gold" id="ok">Save</button><button class="btn" id="cx">Cancel</button></div>', function () {
-        document.getElementById('cx').onclick = closeModal;
-        document.getElementById('ok').onclick = function () {
+        '</div><div class="field"><label>Notes</label><input data-k="notes" value="' + esc(item.notes || '') + '"></div><div class="row"><button type="button" class="btn gold" id="inv-ok">Save</button><button type="button" class="btn" id="inv-cx">Cancel</button></div>', function (m) {
+        m.querySelector('#inv-cx').onclick = closeModal;
+        m.querySelector('#inv-ok').onclick = function () {
           var b = { id: item.id || '', parentType: type, parentId: pid }; document.querySelectorAll('#modal [data-k]').forEach(function (el) { b[el.dataset.k] = el.value; });
           api('saveInventory', { item: b }).then(function () { closeModal(); return api('listInventory', { parentType: type, parentId: pid }); }).then(function (list) { renderInventory(type, pid, list, can); toast('Saved.'); }).catch(fail);
         };
@@ -1055,9 +1071,9 @@
         r = r || { type: 'contractor' };
         modal('<h2>' + (r.id ? 'Edit Resource' : 'Add Resource') + '</h2><div class="field"><label>Type</label><select data-k="type">' + groups.map(function (g) { return '<option value="' + g[0] + '"' + (r.type === g[0] ? ' selected' : '') + '>' + g[1] + '</option>'; }).join('') + '</select></div><div class="calcgrid">' +
           [['name', 'Name'], ['phone', 'Phone'], ['email', 'Email'], ['company', 'Company'], ['license', 'License'], ['kind', 'Contractor / Handyman'], ['address', 'Address']].map(function (x) { return '<div class="field"><label>' + x[1] + '</label><input data-k="' + x[0] + '" value="' + esc(r[x[0]] || '') + '"></div>'; }).join('') +
-          '</div><div class="field"><label>Details</label><textarea data-k="details" rows="2">' + esc(r.details || '') + '</textarea></div><div class="row"><button class="btn gold" id="ok">Save</button>' + (r.id ? '<button class="btn danger" id="dl">Delete</button>' : '') + '<button class="btn" id="cx">Cancel</button></div>', function () {
-          document.getElementById('cx').onclick = closeModal;
-          document.getElementById('ok').onclick = function () { var b = { id: r.id || '' }; document.querySelectorAll('#modal [data-k]').forEach(function (el) { b[el.dataset.k] = el.value; }); api('saveResource', { resource: b }).then(function () { closeModal(); viewResources(); }).catch(fail); };
+          '</div><div class="field"><label>Details</label><textarea data-k="details" rows="2">' + esc(r.details || '') + '</textarea></div><div class="row"><button type="button" class="btn gold" id="res-ok">Save</button>' + (r.id ? '<button type="button" class="btn danger" id="dl">Delete</button>' : '') + '<button type="button" class="btn" id="res-cx">Cancel</button></div>', function (m) {
+          m.querySelector('#res-cx').onclick = closeModal;
+          m.querySelector('#res-ok').onclick = function () { var b = { id: r.id || '' }; m.querySelectorAll('[data-k]').forEach(function (el) { b[el.dataset.k] = el.value; }); api('saveResource', { resource: b }).then(function () { closeModal(); viewResources(); }).catch(fail); };
           var dl = document.getElementById('dl'); if (dl) dl.onclick = function () { api('deleteResource', { id: r.id }).then(function () { closeModal(); viewResources(); }).catch(fail); };
         });
       };
@@ -1105,7 +1121,7 @@
   }
   function renderHolding(f) {
     markTab('#/holdings');
-    TIPS = { f: f, edit: !!sessionStorage.getItem('fl_tipedit') && (isOwner() || f.canManage) };
+    TIPS = { f: f, edit: !!pageEdit && (isOwner() || f.canManage) };
     var x = C.holding(f), can = f.canManage;
     var ln = function (k, v, cls, opts) {
       opts = opts || {};
@@ -1269,9 +1285,9 @@
       '<div class="field"><label>When</label><select id="eda"><option value="0">Paid now</option><option value="1"' + (curAt ? ' selected' : '') + '>At sale (escrow pays it from the proceeds)</option></select></div></div>' +
       '<div class="field"><label>Notes</label><textarea id="ed7" rows="2">' + esc(notesOf(e)) + '</textarea></div>' +
       '<div class="field"><label>Receipt (PDF Or Photo, Under 10 MB)' + (e.receiptUrl ? ' · <a href="' + esc(e.receiptUrl) + '" target="_blank" rel="noopener">Current</a>' : '') + '</label><input type="file" id="ed8" accept="application/pdf,image/jpeg,image/png,image/heic,image/webp"></div>' +
-      '<div class="row"><button class="btn gold" id="ok">Save</button><button class="btn" id="cx">Cancel</button></div>', function () {
-      document.getElementById('cx').onclick = closeModal;
-      document.getElementById('ok').onclick = function () {
+      '<div class="row"><button type="button" class="btn gold" id="exp-ok">Save</button><button type="button" class="btn" id="exp-cx">Cancel</button></div>', function (m) {
+      m.querySelector('#exp-cx').onclick = closeModal;
+      m.querySelector('#exp-ok').onclick = function () {
         var b = this; b.disabled = true;
         var link = document.getElementById('ed6').value;
         var body = { id: e.id || '', date: document.getElementById('ed1').value, payee: document.getElementById('ed2').value, category: document.getElementById('ed3').value,
