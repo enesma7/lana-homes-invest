@@ -381,3 +381,12 @@ input.ro{background:var(--soft);color:var(--char);cursor:default}
   .prow .pacts{justify-content:flex-end;padding-bottom:10px}
   .prt[data-names-only="1"] .prow{grid-template-columns:1fr 1fr}
 }
+
+/* v156: locked calculated totals; sticky Edit column on expense tables */
+.lock{display:inline-flex;align-items:center;margin-left:5px;color:var(--meta);vertical-align:1px;flex:none;cursor:help}
+.lock svg{display:block}
+.tblwrap table.t th:last-child,.tblwrap table.t td:last-child{position:sticky;right:0;background:#fff;box-shadow:-8px 0 10px -8px rgba(0,0,7,.16);z-index:1}
+tr.erow{cursor:pointer}
+tr.erow:hover td{background:#FAFAFC}
+tr.erow:hover td:last-child{background:#FAFAFC}
+.field .ro+button,.field button[data-close-open]{margin-top:6px}

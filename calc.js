@@ -162,6 +162,24 @@
     return out;
   }
   function ledgerR2(x) { return Math.round(x * 100) / 100; }
+  function parseOverrides(f) {
+    var o = f && f.overrides;
+    if (typeof o === 'string') { try { o = JSON.parse(o) || {}; } catch (e) { o = {}; } }
+    return o && typeof o === 'object' && !Array.isArray(o) ? o : {};
+  }
+  /** Owner-typed values (Edit Numbers → Override) win over the live expense totals for that field only. */
+  function applyOverrides(g) {
+    var o = parseOverrides(g), k, keys = ['buyClosingCosts', 'rehabSpent', 'holdingCosts', 'sellingCosts', 'otherCosts',
+      'purchasePrice', 'loanAmount', 'salePrice', 'rehabBudget', 'adjustments', 'currentValue', 'loanBalance', 'monthlyIncome', 'monthlyExpenses', 'cashInvested'];
+    for (var i = 0; i < keys.length; i++) {
+      k = keys[i];
+      if (o.hasOwnProperty(k) && o[k] !== '' && o[k] != null) g[k] = ledgerR2(ledgerNum(o[k]));
+    }
+    return g;
+  }
+  /** Down payment is the price not funded by the loan. Cash to purchase = that down payment + buying closing costs. */
+  function downPayment(f) { return ledgerR2(ledgerNum(f && f.purchasePrice) - ledgerNum(f && f.loanAmount)); }
+  function cashToPurchase(f) { return ledgerR2(downPayment(f) + ledgerNum(f && f.buyClosingCosts)); }
   function ledgerPayerMatches(payer, name) { payer = String(payer || '').toLowerCase(); name = String(name || '').toLowerCase().trim(); return !!name && (payer === name || payer.indexOf(name + ' ') === 0 || payer.indexOf(name + '(') === 0); }
   function ledgerSetupRow(x) { return x && (x.payout || x.meta); }
   /** Apply a property's expense ledger: cost buckets, capital per partner and cash in all come from the entries.
@@ -196,6 +214,7 @@
     g.unmatchedPaid = {};
     if (rows.length) { for (var u in L.paid) if (!matched[u]) g.unmatchedPaid[u] = L.paid[u]; for (var v in L.purchasePaid || {}) if (!matched['\u0000' + v]) g.unmatchedPaid[v] = ledgerR2((g.unmatchedPaid[v] || 0) + L.purchasePaid[v]); }
     g._live = true;
+    applyOverrides(g);
     return g;
   }
   /* LEDGER-END */
@@ -208,7 +227,7 @@
     var lender = f.lender ? ' · ' + f.lender : '';
     var purchase = [['Purchase Price', price]];
     if (loan) purchase.push(['Loan' + lender, -loan]);
-    purchase.push(['Buying Closing Costs', L.buying]);
+    purchase.push(['Buying Closing Costs', n(f.buyClosingCosts)]);
     var capital = inv.map(function (i) {
       return [i.name, i.capital, i.purchaseCash && i.expensesPaid ? 'Purchase ' + fmt(i.purchaseCash) + ' + expenses ' + fmt(i.expensesPaid) : ''];
     });
@@ -226,10 +245,11 @@
       return [i.name, i.distribution, 'Capital ' + fmt(i.capital) + (i.profitShare < 0 ? ' − ' + fmt(-i.profitShare) + ' loss' : ' + ' + fmt(i.profitShare) + ' profit') + ' (' + pct(i.split) + ')'];
     });
     return { title: 'Purchase To Payout' + (sold ? '' : ' (Projected)'),
-      purchase: purchase, purchaseTotal: ['Cash To Purchase', r2(price - loan + L.buying)],
+      purchase: purchase, purchaseTotal: ['Cash To Purchase', cashToPurchase(f)],
       capital: capital, capitalTotal: ['Total Cash Invested', capTotal],
       saleTitle: sold ? 'Paid Out' : 'Projected Payout',
       sale: saleRows, saleTotal: ['Paid Out To Partners', toPartners],
+      saleNet: ['Net Proceeds', net],
       paid: paid, paidTotal: ['Total To Partners', r2(inv.reduce(function (t, i) { return t + i.distribution; }, 0))],
       source: src, live: true };
   }
@@ -298,6 +318,6 @@
       totalRoi: cash > 0 && value > 0 ? (equity - cash + (hasIncome ? cf * 12 : 0)) / cash : null, noi: r2(hasIncome ? cf * 12 : 0), cashFlowToDate: r2(cfToDate), monthsHeld: months, daysHeld: days };
   }
 
-  var api = { splitsOf: splitsOf, ledgerSum: ledgerSum, payerMatches: ledgerPayerMatches, estimate: estimate, flip: flip, holding: holding, live: ledgerLive, ledger: ledger, ledgers: ledgers, phaseOf: ledgerPhase, atSaleOf: ledgerAtSale, payerOf: ledgerPayer, PHASES: LEDGER_PHASES, DEAL_PHASES: LEDGER_DEAL, daysBetween: daysBetween, annualize: annualize, n: n };
+  var api = { splitsOf: splitsOf, ledgerSum: ledgerSum, payerMatches: ledgerPayerMatches, estimate: estimate, flip: flip, holding: holding, live: ledgerLive, ledger: ledger, ledgers: ledgers, phaseOf: ledgerPhase, atSaleOf: ledgerAtSale, payerOf: ledgerPayer, PHASES: LEDGER_PHASES, DEAL_PHASES: LEDGER_DEAL, daysBetween: daysBetween, annualize: annualize, n: n, downPayment: downPayment, cashToPurchase: cashToPurchase, parseOverrides: parseOverrides, applyOverrides: applyOverrides };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.FlipCalc = api;
 })(this);

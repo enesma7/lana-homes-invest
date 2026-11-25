@@ -131,7 +131,7 @@
     if (!rows.length) { R.note('No expenses recorded on this property.'); return; }
     var total = 0, by = {}, cnt = 0, pc = 0;
     rows.forEach(function (e) { if (e.purchase) { pc += n(e.amount); return; } cnt++; total += n(e.amount); var k = e.payer || 'Not recorded'; by[k] = (by[k] || 0) + n(e.amount); });
-    R.lines(Object.keys(by).sort(function (a, b) { return by[b] - by[a]; }).map(function (k) { return ['Paid by ' + k, money(by[k])]; }).concat([['Total Expenses (' + cnt + ' entries)', money(total), true]]).concat(pc ? [['Purchase Cash (partners’ money toward the price, not an expense)', money(pc)]] : []));
+    R.lines(Object.keys(by).sort(function (a, b) { return by[b] - by[a]; }).map(function (k) { return ['Paid by ' + k, money(by[k])]; }).concat([['Total Expenses (' + cnt + ' entries)', money(total), true]]));
     R.table(['Date', 'Payee', 'Category', 'Paid By', 'Method', 'Amount'], rows.map(function (e) {
       return [e.date ? fdate(e.date) : (e.atSale ? 'At sale' : '-'), e.payee, e.category || '', e.payer || '-', e.method || '', { content: money(e.amount), styles: { halign: 'right' } }];
     }), { styles: { fontSize: 7.5, textColor: INK, cellPadding: 3, lineColor: LINE, lineWidth: { bottom: 0.4 } }, columnStyles: { 0: { cellWidth: 52 }, 2: { cellWidth: 74 }, 3: { cellWidth: 70 }, 4: { cellWidth: 58 }, 5: { cellWidth: 62, halign: 'right' } } });
