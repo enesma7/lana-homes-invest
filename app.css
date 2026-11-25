@@ -384,6 +384,11 @@ input.ro{background:var(--soft);color:var(--char);cursor:default}
 
 /* v156: locked calculated totals; sticky Edit column on expense tables */
 .lock{display:inline-flex;align-items:center;margin-left:5px;color:var(--meta);vertical-align:1px;flex:none;cursor:help}
+.lines .ln.locked,.lines .ln.tot{align-items:center}
+.lines .ln.locked .lnl,.lines .ln.tot .lnl{flex:1;min-width:0}
+.lines .ln.locked .lock,.lines .ln.tot .lock{color:var(--meta);flex:none;display:inline-flex}
+.lines .ln.locked .num,.lines .ln.tot .num{flex:none;margin-left:auto}
+
 .lock svg{display:block}
 .tblwrap table.t th:last-child,.tblwrap table.t td:last-child{position:sticky;right:0;background:#fff;box-shadow:-8px 0 10px -8px rgba(0,0,7,.16);z-index:1}
 tr.erow{cursor:pointer}

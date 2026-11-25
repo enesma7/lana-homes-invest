@@ -139,7 +139,8 @@
   function payoutSection(R, p) {
     if (!p) return;
     R.section(p.title || 'Purchase To Payout');
-    var blk = function (title, rows, tot) { if (!rows || !rows.length) return; R.table([title, ''], rows.map(function (r) { return [r[0], { content: money(r[1]), styles: { halign: 'right', fontStyle: 'bold' } }]; }).concat(tot ? [[{ content: tot[0], styles: { fontStyle: 'bold', textColor: BLACK } }, { content: money(tot[1]), styles: { halign: 'right', fontStyle: 'bold', textColor: BLACK } }]] : []), { columnStyles: { 1: { cellWidth: 150 } } }); };
+    var lockedTot = function (name) { return /^(Cash To Purchase|Total Cash Invested|Total To Partners|Net Proceeds|Buying Closing Costs)\b/i.test(String(name || '')); };
+    var blk = function (title, rows, tot) { if (!rows || !rows.length) return; R.table([title, ''], rows.map(function (r) { return [r[0], { content: money(r[1]), styles: { halign: 'right', fontStyle: 'bold' } }]; }).concat(tot ? [[{ content: tot[0] + (lockedTot(tot[0]) ? '  (locked)' : ''), styles: { fontStyle: 'bold', textColor: BLACK } }, { content: money(tot[1]), styles: { halign: 'right', fontStyle: 'bold', textColor: BLACK } }]] : []), { columnStyles: { 1: { cellWidth: 150 } } }); };
     blk('At Purchase', p.purchase, p.purchaseTotal); blk('Cash Invested By Partner', p.capital, p.capitalTotal);
     blk(p.saleLabel || 'At Sale Closing', p.sale, p.saleNet); blk(p.paidLabel || 'Paid Out To', p.paid, p.paidTotal);
   }
