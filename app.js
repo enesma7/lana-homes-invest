@@ -286,8 +286,12 @@
   function expensesQ() { if (!EXQ) EXQ = api('listExpenses').catch(function (e) { EXQ = null; throw e; }); return EXQ; }
   function expensesChanged() { EXQ = null; S.flips = null; for (var k in PXC) delete PXC[k]; }
   function withLedgers(list) {
-    var need = list.some(function (f) { return !f.ledger; });
-    var go = need && isOwner() ? expensesQ().then(function (r) { var L = C.ledgers(r.items); list.forEach(function (f) { if (!f.ledger && L[f.id]) f.ledger = L[f.id]; }); }).catch(function () {}) : Promise.resolve();
+    // Owner Numbers always come from the current expense list, not a possibly stale getFlip ledger
+    // (a warm Apps Script instance can keep an older in-memory ledger after another instance saved).
+    var go = isOwner() ? expensesQ().then(function (r) {
+      var L = C.ledgers(r.items);
+      list.forEach(function (f) { f.ledger = L[f.id] || f.ledger || C.ledger([]); f._liveApplied = false; });
+    }).catch(function () {}) : Promise.resolve();
     return go.then(function () { return list.map(function (f) { if (!f.ledger || f._liveApplied) return f; var g = C.live(f); g._liveApplied = true; return g; }); });
   }
   function loadFlips(force) { if (S.flips && !force) return Promise.resolve(S.flips); return api('listFlips').then(withLedgers).then(function (f) { S.flips = f; return f; }); }
@@ -1276,6 +1280,92 @@
   }
   function csvCell(v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
   // Expenses tied to one flip or holding (owner only; the server rejects everyone else).
+  var CAT_FORM = ['Repairs & Materials', 'Labor', 'Material', 'Holding', 'Utilities', 'Permits', 'Reports', 'Marketing', 'Closing Costs', 'Insurance', 'Property Taxes', 'Loan Interest', 'HOA', 'Purchase Cash', 'Other'];
+  var CAT_FORM_LABEL = { 'Repairs & Materials': 'Labor & Material' };
+  var CAT_DISPLAY_ORDER = ['Labor & Material', 'Labor', 'Material', 'Holding', 'Utilities', 'Permits', 'Reports', 'Marketing', 'Buying Closing Costs', 'Selling Closing Costs', 'Closing Costs', 'Insurance', 'Taxes', 'Financing/Interest'];
+  function catDisplayOf(e) {
+    var c = String(e.category || '').trim() || 'Other', ph = C.phaseOf(e);
+    if (c === 'Repairs & Materials' || c === 'Labor & Material') return 'Labor & Material';
+    if (c === 'Labor') return 'Labor';
+    if (c === 'Material' || c === 'Materials') return 'Material';
+    if (c === 'Holding') return 'Holding';
+    if (c === 'Utilities') return 'Utilities';
+    if (c === 'Permits' || c === 'Dues, Licenses & Fees') return 'Permits';
+    if (c === 'Reports') return 'Reports';
+    if (c === 'Marketing' || c === 'Marketing & Gifts') return 'Marketing';
+    if (c === 'Closing Costs' || c === 'Buying Closing Costs' || c === 'Selling Closing Costs') {
+      if (ph === 'Buying') return 'Buying Closing Costs';
+      if (ph === 'Selling') return 'Selling Closing Costs';
+      return 'Closing Costs';
+    }
+    if (c === 'Insurance') return 'Insurance';
+    if (c === 'Property Taxes' || c === 'Taxes') return 'Taxes';
+    if (c === 'Loan Interest' || c === 'Financing/Interest' || c === 'Interest') return 'Financing/Interest';
+    return c;
+  }
+  function expenseCatOptions(selected) {
+    var seen = {}, out = [];
+    function add(v) {
+      if (!v || seen[v]) return;
+      seen[v] = 1;
+      out.push('<option value="' + esc(v) + '"' + (v === selected ? ' selected' : '') + '>' + esc(CAT_FORM_LABEL[v] || v) + '</option>');
+    }
+    CAT_FORM.forEach(add);
+    (EX.cats || []).forEach(add);
+    if (selected) add(selected);
+    return out.join('');
+  }
+  function expenseBreakdownLines(exp, f) {
+    var lockTxt = 'Part of Total Expenses — locked';
+    var partners = ((f && f.investors) || []).filter(function (x) { return x && x.name && !x.payout && !x.meta; }).map(function (x) { return x.name; });
+    function payerKey(e) {
+      var p = String(payerOf(e) || '').trim();
+      if (!p) return { key: '__none__', label: 'Payer not recorded' };
+      if (/escrow/i.test(p)) return { key: '__escrow__', label: 'Paid at closing (escrow)' };
+      for (var i = 0; i < partners.length; i++) {
+        if (C.payerMatches(p, partners[i])) return { key: 'p:' + partners[i].toLowerCase(), label: 'Expenses paid by ' + partners[i] };
+      }
+      return { key: 'o:' + p.toLowerCase(), label: 'Expenses paid by ' + p };
+    }
+    var byPay = {}, payOrder = [];
+    exp.forEach(function (e) {
+      var g = payerKey(e);
+      if (!byPay[g.key]) { byPay[g.key] = { label: g.label, amt: 0, key: g.key }; payOrder.push(g.key); }
+      byPay[g.key].amt += e.amount;
+    });
+    var rank = function (k) {
+      if (k.indexOf('p:') === 0) {
+        var name = byPay[k].label.replace(/^Expenses paid by /, '');
+        var i = partners.indexOf(name); return i >= 0 ? i : 50;
+      }
+      if (k === '__escrow__') return 80;
+      if (k === '__none__') return 99;
+      return 90;
+    };
+    payOrder.sort(function (a, b) { return rank(a) - rank(b); });
+    var byCat = {}, catKeys = [];
+    exp.forEach(function (e) {
+      var lab = catDisplayOf(e);
+      if (byCat[lab] == null) { byCat[lab] = 0; catKeys.push(lab); }
+      byCat[lab] += e.amount;
+    });
+    catKeys.sort(function (a, b) {
+      var ia = CAT_DISPLAY_ORDER.indexOf(a), ib = CAT_DISPLAY_ORDER.indexOf(b);
+      if (ia < 0 && a === 'Other') ia = 1000;
+      if (ib < 0 && b === 'Other') ib = 1000;
+      if (ia < 0) ia = 500;
+      if (ib < 0) ib = 500;
+      if (ia !== ib) return ia - ib;
+      return a < b ? -1 : 1;
+    });
+    function line(label, amt) {
+      if (!amt) return '';
+      return '<div class="exline"><span>' + esc(label) + lock(lockTxt) + '</span><span class="num">' + money(amt) + '</span></div>';
+    }
+    var pays = payOrder.map(function (k) { return line(byPay[k].label, byPay[k].amt); }).join('');
+    var cats = catKeys.map(function (k) { return line(k, byCat[k]); }).join('');
+    return (pays ? '<div class="exbreak">' + pays + '</div>' : '') + (cats ? '<div class="exbreak"><div class="exh">Categories</div>' + cats + '</div>' : '');
+  }
   function propExpenses(f) {
     var host = document.getElementById('proex'); if (!host || !isOwner()) return;
     host.innerHTML = '<div class="loading">Loading…</div>';
@@ -1286,13 +1376,11 @@
       // Purchase Cash entries are partners' money toward the price (capital), so they are excluded from Total Expenses. They still appear as rows in the table.
       var isPc = function (e) { return C.phaseOf(e) === 'Purchase Cash'; };
       var exp = rows.filter(function (e) { return !isPc(e); });
-      var total = exp.reduce(function (t, e) { return t + e.amount; }, 0), byCat = {};
+      var total = exp.reduce(function (t, e) { return t + e.amount; }, 0);
       var off = exp.filter(function (e) { return C.DEAL_PHASES.indexOf(C.phaseOf(e)) < 0; }).reduce(function (t, e) { return t + e.amount; }, 0);
-      exp.forEach(function (e) { byCat[e.category || 'Other'] = (byCat[e.category || 'Other'] || 0) + e.amount; });
-      var byPay = {}; exp.forEach(function (e) { var k = payerOf(e) || 'Not recorded'; byPay[k] = (byPay[k] || 0) + e.amount; });
-      var pays = Object.keys(byPay).sort(function (a, b) { return byPay[b] - byPay[a]; }).map(function (k) { return '<span class="pill">' + esc(k) + ' ' + money(byPay[k], 0) + '</span>'; }).join(' ');
-      host.innerHTML = '<div class="card tblwrap"><div class="spread" style="padding:16px 18px 14px;align-items:center"><div><div class="kpi"><div class="k">Total Expenses' + lock('Sum of this property’s expense entries (not including Purchase Cash capital) — locked') + info(off ? money(off) + ' of these entries are marked Excluded or Operating, so they are not in the deal numbers' : '') + '</div><div class="v" style="font-size:24px;margin-top:6px">' + money(total) + '</div><div class="meta">' + exp.length + ' entr' + (exp.length === 1 ? 'y' : 'ies') + '</div>' + (exp.length ? '<div class="paidby" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px"><span class="meta" style="align-self:center">Paid by</span> ' + pays + '</div>' : '') + '</div>' +
+      host.innerHTML = '<div class="card tblwrap"><div class="exhead"><div class="kpi"><div class="k">Total Expenses' + lock('Sum of this property’s expense entries (not including Purchase Cash capital) — locked') + info(off ? money(off) + ' of these entries are marked Excluded or Operating, so they are not in the deal numbers' : '') + '</div><div class="v" style="font-size:24px;margin-top:6px">' + money(total) + '</div><div class="meta">' + exp.length + ' entr' + (exp.length === 1 ? 'y' : 'ies') + '</div></div>' +
         '<div class="row"><button type="button" class="btn sm" id="pxcsv">Export CSV</button><button type="button" class="btn sm gold" id="pxadd">Add Expense</button></div></div>' +
+        (exp.length ? expenseBreakdownLines(exp, f) : '') +
         '<table class="t"><thead><tr><th>Date</th><th>Payee</th><th>Category</th><th>Paid By</th><th>Method</th><th class="r">Amount</th><th>Receipt</th><th></th></tr></thead><tbody>' +
         (rows.length ? rows.map(function (e) {
           return '<tr class="erow" data-xe="' + esc(e.id) + '"><td>' + datePill(e) + '</td><td><b>' + esc(e.payee) + '</b>' + info(notesOf(e)) + '</td><td>' + esc(e.category) + (e.linkId ? '<div>' + phasePill(e) + '</div>' : '') + '</td><td>' + (payerOf(e) ? esc(payerOf(e)) : '<span class="meta">—</span>') + '</td><td class="meta">' + esc(e.method) + '</td>' +
@@ -1315,7 +1403,7 @@
   function readB64(file) { return new Promise(function (ok, no) { var r = new FileReader(); r.onload = function () { ok(String(r.result).split(',')[1] || ''); }; r.onerror = no; r.readAsDataURL(file); }); }
   function editExpense(e, prop, opts) {
     opts = opts || {};
-    EX.cats = EX.cats && EX.cats.length ? EX.cats : ['Closing Costs', 'Rehab', 'Loan Interest', 'Insurance', 'Utilities', 'HOA', 'Taxes', 'Other'];
+    EX.cats = EX.cats && EX.cats.length ? EX.cats : CAT_FORM.slice();
     EX.props = EX.props || [];
     var isNew = !e || !e.id; e = e || { date: todayISO(), linkType: prop ? (isHolding(prop) ? 'holding' : 'flip') : 'general', linkId: prop ? prop.id : '', category: '', amount: '', method: 'LLC Card' };
     if (opts.phase && isNew) e.phase = opts.phase;
@@ -1323,7 +1411,7 @@
     var curPhase = isNew ? (opts.phase || e.phase || 'Rehab') : C.phaseOf(e), curAt = !isNew && C.atSaleOf(e);
     modal('<h2>' + (isNew ? 'Add Expense' : 'Edit Expense') + '</h2><div class="calcgrid">' +
       '<div class="field"><label>Date</label><input type="date" id="ed1" value="' + esc(e.date) + '"></div><div class="field"><label>Payee</label><input id="ed2" value="' + esc(e.payee || '') + '"></div>' +
-      '<div class="field"><label>Category</label><select id="ed3">' + EX.cats.map(function (c) { return '<option' + (c === e.category ? ' selected' : '') + '>' + esc(c) + '</option>'; }).join('') + (e.category && EX.cats.indexOf(e.category) < 0 ? '<option selected>' + esc(e.category) + '</option>' : '') + '</select></div>' +
+      '<div class="field"><label>Category</label><select id="ed3">' + expenseCatOptions(e.category) + '</select></div>' +
       '<div class="field"><label>Amount (Negative For A Refund)</label><input id="ed4" inputmode="decimal" value="' + esc(e.amount) + '"></div>' +
       '<div class="field"><label>Paid By</label><input id="ed9" list="ed9l" value="' + esc(payerOf(e)) + '" placeholder="Enrique, Zina, Aldo, Escrow"><datalist id="ed9l"><option>Enrique</option><option>Zina</option><option>Aldo</option><option>Escrow (at sale)</option><option>LANA HOMES LLC</option></datalist></div>' +
       '<div class="field"><label>Method</label><input id="ed5" value="' + esc(e.method || '') + '" placeholder="LLC Card, Zelle, Check"></div>' +

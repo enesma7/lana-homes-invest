@@ -392,3 +392,18 @@ tr.erow:hover td:last-child{background:#FAFAFC}
 .field .ro+button,.field button[data-close-open]{margin-top:6px}
 
 .perr{margin:8px 0 0;color:var(--red2,#9A0007);font-size:13px;font-weight:600}
+
+/* Property Expenses card: locked payer + category breakdown under Total Expenses */
+.exhead{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;padding:16px 18px 8px}
+.exbreak{padding:0 18px 12px}
+.exbreak .exh{font-size:10.5px;text-transform:uppercase;letter-spacing:.1em;font-weight:700;color:var(--char);margin:8px 0 6px}
+.exline{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:5px 0;font-size:13.5px;line-height:1.35;border-top:1px solid var(--line);color:var(--ink)}
+.exbreak .exline:first-child,.exbreak .exh+.exline{border-top:0}
+.exline span:first-child{min-width:0;flex:1}
+.exline .num{flex:none;font-variant-numeric:tabular-nums;font-weight:700;white-space:nowrap;letter-spacing:-.01em}
+@media (max-width:420px){
+  .exhead{padding:14px 14px 8px;align-items:flex-start}
+  .exhead .row{width:100%}
+  .exbreak{padding:0 14px 12px}
+  .exline{font-size:13px;gap:8px}
+}
