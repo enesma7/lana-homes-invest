@@ -638,11 +638,11 @@
       var lk = cls === 'tot' || /^(Cash To Purchase|Total Cash Invested|Total To Partners|Net Proceeds|Buying Closing Costs)\b/i.test(name);
       return '<div class="ln' + (cls ? ' ' + cls : '') + (lk ? ' locked' : '') + '"><span class="lnl">' + esc(name) + (lk ? lock('Calculated total — locked') : '') + info(r[2], 'po:' + plain(name)) + '</span><span class="num">' + (r[1] < 0 ? '<span class="neg">−' + money(-r[1]) + '</span>' : money(r[1])) + '</span></div>';
     };
-    var block = function (title, rows, tot) { return rows && rows.length ? '<div class="label" style="margin:14px 0 4px">' + esc(title) + '</div><div class="lines">' + rows.map(function (r) { return ln(r); }).join('') + (tot ? ln(tot, 'tot') : '') + '</div>' : ''; };
+    var block = function (title, rows, tot, note) { return rows && rows.length ? '<div class="label" style="margin:14px 0 4px">' + esc(title) + '</div><div class="lines">' + rows.map(function (r) { return ln(r); }).join('') + (tot ? ln(tot, 'tot') : '') + (note ? '<div class="ln note-only"><span class="mnote">' + esc(note) + '</span></div>' : '') + '</div>' : ''; };
     return '<div class="label">' + esc(p.title || 'Purchase To Payout') + info(p.source ? 'Source: ' + p.source : '', 'po:Title') + '</div><div class="grid g2"><div class="card rule"><h2>Invested</h2>' +
       block('At Purchase', p.purchase, p.purchaseTotal) + block('Cash Invested By Partner', p.capital, p.capitalTotal) + '</div>' +
       '<div class="card rule"><h2>' + esc(p.saleTitle || 'Paid Out') + '</h2>' +
-      block(p.saleLabel || 'At Sale Closing', p.sale, p.saleNet) + block(p.paidLabel || 'Paid Out To', p.paid, p.paidTotal) + '</div></div>' +
+      block(p.saleLabel || 'At Sale Closing', p.sale, p.saleNet, p.saleNote) + block(p.paidLabel || 'Paid Out To', p.paid, p.paidTotal) + '</div></div>' +
       '';
   }
 

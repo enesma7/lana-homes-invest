@@ -122,6 +122,8 @@ table.t td.r,table.t th.r{text-align:right}
 .lines .ln .lnl,.lines .ln span:first-child{display:inline-flex;align-items:center;flex-wrap:wrap;flex:0 1 auto;min-width:0}
 .lines .ln.tot{font-weight:800;border-bottom:none;padding-top:11px}
 .lines .ln.tot span:first-child{color:var(--ink)}
+.lines .ln.note-only{border-bottom:none;padding-top:2px;justify-content:flex-start}
+.lines .ln.note-only .mnote{color:#8A8A90;font-weight:400;font-style:normal;font-size:12px;letter-spacing:0;text-transform:none}
 /* ---------- property cards ---------- */
 .flipcard{cursor:pointer}
 .flipcard:hover{transform:translateY(-3px);border-color:#E3D3A8}

@@ -260,18 +260,18 @@
     L.atSale.forEach(function (a) { if (!groups[a.phase]) { groups[a.phase] = 0; order.push(a.phase); } groups[a.phase] += a.amount; });
     var lab = { 'Buying': 'Buying Costs Paid At Sale', 'Rehab': 'Rehab Paid From Escrow', 'Holding': 'Holding Costs Paid At Sale', 'Selling': 'Selling Costs Through Escrow', 'After Sale': 'Held Back After Sale' };
     order.forEach(function (p) { saleRows.push([lab[p], -r2(groups[p])]); });
-    if (adj) saleRows.push([f.adjustmentsLabel || 'Credits', adj]);
     var afterOpen = afterSaleNotAtSale(L);
     var pc = r2(n(f.purchaseCredits));
     // If the structured field is set, those credits were moved out of adjustments and are already not in `adj`.
     // If it is empty, any inferred purchase-side credit is still sitting inside adjustments and must be excluded from net.
     var exclude = pc ? 0 : purchaseCreditsOf(f, L);
+    // Display only the sale-side credit in the summing column (adj minus any inferred purchase credit still inside it).
+    var creditShown = r2(adj - exclude);
+    if (creditShown) saleRows.push([f.adjustmentsLabel || 'Credits', creditShown]);
     if (afterOpen) saleRows.push([f.otherCostsLabel || 'Costs After Closing', -afterOpen, 'After-sale costs not paid through the sale escrow']);
-    // Show inferred credits (still inside adjustments) as an exclusion line. After migration, show the structured
-    // purchaseCredits amount the same way for transparency, but do not subtract it from net again (it is already out of adj).
-    if (exclude) saleRows.push(['Purchase Credits (Already In Cash In)', -exclude, 'Purchase-side credits reduced cash to purchase and are not added to sale Net Proceeds']);
-    else if (pc) saleRows.push(['Purchase Credits', -pc, 'Already reflected in cash in and left out of sale Net Proceeds; not subtracted again']);
     var net = r2(sale - loan - L.atSaleTotal + adj - afterOpen - exclude), toPartners = r2(capTotal + x.profit), diff = r2(toPartners - net);
+    var shownPc = r2(pc || exclude);
+    var saleNote = shownPc ? ('Purchase Credits ' + fmt(shownPc) + ', already counted in cash in (not deducted)') : '';
     if (Math.abs(diff) >= 0.01) saleRows.push(['Settled Outside The Sale Escrow', diff, 'Costs in the totals not paid by a partner or the sale escrow']);
     var paid = inv.map(function (i) {
       return [i.name, i.distribution, 'Capital ' + fmt(i.capital) + (i.profitShare < 0 ? ' − ' + fmt(-i.profitShare) + ' loss' : ' + ' + fmt(i.profitShare) + ' profit') + ' (' + pct(i.split) + ')'];
@@ -281,7 +281,7 @@
       capital: capital, capitalTotal: ['Total Cash Invested', capTotal],
       saleTitle: sold ? 'Paid Out' : 'Projected Payout',
       sale: saleRows, saleTotal: ['Paid Out To Partners', toPartners],
-      saleNet: ['Net Proceeds', net],
+      saleNet: ['Net Proceeds', net], saleNote: saleNote,
       paid: paid, paidTotal: ['Total To Partners', r2(inv.reduce(function (t, i) { return t + i.distribution; }, 0))],
       source: src, live: true };
   }
