@@ -571,7 +571,7 @@
   var DERIVED = { buyClosingCosts: 'Buying', rehabSpent: 'Rehab', holdingCosts: 'Holding', sellingCosts: 'Selling', otherCosts: 'After Sale' };
   function m2(v) { return money(v); }
 
-  /* ---------- Partners: one structured row per partner (Name, Purchase Cash, live Capital, Profit/Loss %) ---------- */
+  /* ---------- Partners: one row per partner (Name, Profit/Loss % auto or Override, optional note) ---------- */
   function pctTxt(v) { return (Math.round(v * 10000) / 100).toFixed(2) + '%'; }
   function partnerRowsOf(f) { return (f.investors || []).filter(function (i) { return i && !i.payout && !i.meta; }); }
   function partnersHtml(rows, opts) {
@@ -583,11 +583,14 @@
   function bindPartners(host, rows, ledger, opts) {
     opts = opts || {};
     var own = isOwner(), namesOnly = !!opts.namesOnly, list = host.querySelector('.prows');
-    var paidBy = function (name) { var t = 0; for (var p in (ledger && ledger.paid) || {}) if (C.payerMatches(p, name)) t += ledger.paid[p]; return Math.round(t * 100) / 100; };
-    var state = rows.map(function (r) { return { name: r.name || '', purchaseCash: r.purchaseCash != null ? Number(r.purchaseCash) : Number(r.capital) || 0, split: Number(r.split) || 0, auto: r.splitMode === 'auto', note: r.note || '', orig: r }; });
-    if (!state.length) state.push({ name: '', purchaseCash: 0, split: 0, auto: true, note: '' });
+    // Capital comes only from the expense entries (Purchase Cash entries + the expenses each partner paid), the same
+    // numbers the breakdown shows. Older data without Purchase Cash entries falls back to the stored purchase cash.
+    var L0 = ledger || {}, fromEntries = !!(L0.purchasePaid && Object.keys(L0.purchasePaid).length);
+    var capOf = function (s) { return Math.round((C.ledgerSum(L0.paid, s.name) + (fromEntries ? C.ledgerSum(L0.purchasePaid, s.name) : Number(s.storedPc) || 0)) * 100) / 100; };
+    var state = rows.map(function (r) { return { name: r.name || '', storedPc: Number(r.purchaseCash) || 0, split: Number(r.split) || 0, auto: r.splitMode === 'auto', note: r.note || '', orig: r }; });
+    if (!state.length) state.push({ name: '', storedPc: 0, split: 0, auto: true, note: '' });
     function calc() {
-      var rs = state.map(function (s) { return { name: s.name, capital: s.purchaseCash + paidBy(s.name), split: s.split, splitMode: s.auto ? 'auto' : 'manual' }; });
+      var rs = state.map(function (s) { return { name: s.name, capital: capOf(s), split: s.split, splitMode: s.auto ? 'auto' : 'manual' }; });
       return C.splitsOf(rs);
     }
     function draw() {
@@ -596,9 +599,7 @@
         var lv = live[i];
         return '<div class="prow" data-i="' + i + '">' +
           '<label class="pf pn"><span>Name</span><input data-f="name" value="' + esc(s.name) + '" placeholder="Partner name" autocomplete="off"></label>' +
-          (namesOnly ? '' : '<label class="pf"><span>Purchase Cash' + info('Cash this partner put in at purchase. Expenses they paid are added from the expense entries.') + '</span><input data-f="purchaseCash" inputmode="decimal" value="' + esc(m2(s.purchaseCash)) + '"></label>' +
-            '<label class="pf"><span>Capital' + info('Purchase cash + the expenses this partner paid, live from the expense entries') + '</span><input class="ro" readonly tabindex="-1" value="' + esc(m2(lv.capital)) + '"></label>') +
-          '<label class="pf"><span>Profit/Loss %' + (s.auto ? info('Automatic: this partner’s share of the partners’ total cash in') : info('Manual split: an agreed percentage typed in, not the cash share')) + '</span>' +
+          '<label class="pf"><span>Profit/Loss %' + (s.auto ? info('Automatic: this partner’s share of the partners’ total cash in (their Purchase Cash and expense entries)') : info('Manual split: an agreed percentage typed in, not the cash share')) + '</span>' +
             '<input data-f="split" inputmode="decimal" ' + (s.auto || !own ? 'readonly tabindex="-1" class="ro" ' : '') + 'value="' + esc(pctTxt(lv.split)) + '"></label>' +
           '<div class="pacts">' + (own ? '<label class="ovr"><input type="checkbox" data-f="ovr"' + (s.auto ? '' : ' checked') + '> Override</label>' : '') +
             (namesOnly ? '' : '<button type="button" class="pnb' + (s.note ? '' : ' add') + '" data-pnote aria-label="' + (s.note ? 'Edit note' : 'Add note') + '">' + (s.note ? 'i' : '+') + '</button>') +
@@ -612,13 +613,13 @@
     host.addEventListener('input', function (e) {
       var row = e.target.closest('.prow'); if (!row) return; var s = state[+row.dataset.i], k = e.target.dataset.f;
       if (k === 'name') s.name = e.target.value; else if (k === 'note') s.note = e.target.value;
-      else if (k === 'purchaseCash') s.purchaseCash = C.n(e.target.value); else if (k === 'split') s.split = C.n(e.target.value) / 100;
+      else if (k === 'split') s.split = C.n(e.target.value) / 100;
       if (k === 'note') return;
       // refresh the computed boxes without stealing focus
       var live = calc();
       host.querySelectorAll('.prow').forEach(function (r, i) {
         var caps = r.querySelectorAll('input.ro'); var lv = live[i];
-        caps.forEach(function (el) { if (el.dataset.f === 'split') { if (state[i].auto) el.value = pctTxt(lv.split); } else el.value = m2(lv.capital); });
+        caps.forEach(function (el) { if (el.dataset.f === 'split' && state[i].auto) el.value = pctTxt(lv.split); });
       });
       var tot = live.reduce(function (t, r) { return t + r.capital; }, 0), sp = live.reduce(function (t, r) { return t + r.split; }, 0);
       host.querySelector('[data-ptot]').textContent = m2(tot); var ps = host.querySelector('[data-psplit]'); ps.textContent = pctTxt(sp); ps.classList.toggle('neg', Math.abs(sp - 1) > 0.00005);
@@ -626,10 +627,9 @@
     host.addEventListener('change', function (e) {
       var row = e.target.closest('.prow'); if (!row) return; var s = state[+row.dataset.i];
       if (e.target.dataset.f === 'ovr') { if (e.target.checked) { s.split = calc()[+row.dataset.i].split; s.auto = false; } else s.auto = true; draw(); }
-      if (e.target.dataset.f === 'purchaseCash') e.target.value = m2(s.purchaseCash);
     });
     host.addEventListener('click', function (e) {
-      if (e.target.closest('[data-padd]')) { state.push({ name: '', purchaseCash: 0, split: 0, auto: true, note: '' }); draw(); var ins = host.querySelectorAll('.prow input[data-f=name]'); ins[ins.length - 1].focus(); return; }
+      if (e.target.closest('[data-padd]')) { state.push({ name: '', storedPc: 0, split: 0, auto: true, note: '' }); draw(); var ins = host.querySelectorAll('.prow input[data-f=name]'); ins[ins.length - 1].focus(); return; }
       var rm = e.target.closest('[data-prm]'); if (rm) { state.splice(+rm.closest('.prow').dataset.i, 1); draw(); return; }
       var nb = e.target.closest('[data-pnote]'); if (nb) { e.stopPropagation(); var ta = nb.closest('.prow').querySelector('.pnote'); ta.hidden = !ta.hidden; if (!ta.hidden) ta.focus(); }
     }, true);
@@ -640,7 +640,8 @@
         var live = calc(), out = [], sp = 0;
         for (var i = 0; i < state.length; i++) {
           var s = state[i]; if (!s.name.trim()) continue;
-          var o = { name: s.name.trim(), purchaseCash: Math.round(s.purchaseCash * 100) / 100, split: live[i].split, note: s.note.trim(), capital: Math.round(live[i].capital * 100) / 100 };
+          // purchaseCash is sent unchanged only so backend 1.4.0 keeps working until 1.4.2 is deployed (1.4.2 reads entries).
+          var o = { name: s.name.trim(), purchaseCash: Math.round((Number(s.storedPc) || 0) * 100) / 100, split: live[i].split, note: s.note.trim(), capital: Math.round(live[i].capital * 100) / 100 };
           if (!s.auto && s.orig && s.orig.splitMode !== 'auto' && Math.abs(pctTxtN(s.orig.split) - pctTxtN(s.split)) < 1e-9) o.split = Number(s.orig.split);
           if (s.auto) o.splitMode = 'auto';
           sp += o.split; out.push(o);
@@ -872,7 +873,7 @@
     var rows = PXC[f.id] ? Promise.resolve(PXC[f.id]) : expensesQ().then(function (r) { return (PXC[f.id] = r.items.filter(function (e) { return e.linkId === f.id; })); });
     return rows.then(function (list) {
       base.expenses = list.slice().sort(function (a, b) { return (a.date || '9') < (b.date || '9') ? -1 : 1; }).map(function (e) {
-        var nt = notesOf(e).replace(/\s*·?\s*Source:.*$/, ''); return { date: e.date, atSale: C.atSaleOf(e), payee: e.payee, category: e.category, payer: payerOf(e), method: e.method, amount: e.amount, notes: e.notes, note: nt.length > 140 ? nt.slice(0, 137) + '...' : nt };
+        var nt = notesOf(e).replace(/\s*·?\s*Source:.*$/, ''); return { date: e.date, atSale: C.atSaleOf(e), purchase: C.phaseOf(e) === 'Purchase Cash', payee: e.payee, category: e.category, payer: payerOf(e), method: e.method, amount: e.amount, notes: e.notes, note: nt.length > 140 ? nt.slice(0, 137) + '...' : nt };
       });
       return base;
     });
@@ -1025,11 +1026,13 @@
   }
   var PB_RE = /^Paid by:\s*([^·]+?)\s*(?:·\s*|$)/;
   function payerOf(e) { if (e.paidBy) return e.paidBy; var m = PB_RE.exec(e.notes || ''); return m ? m[1] : ''; }
-  var TAG_RE = /^(?:\s*(?:Buying|Rehab|Holding|Selling|After Sale|Operating|Excluded|Projected|At Sale)\s*(?:·\s*|$))+/;
+  var TAG_RE = /^(?:\s*(?:Buying|Rehab|Holding|Selling|After Sale|Operating|Excluded|Purchase Cash|Projected|At Sale)\s*(?:·\s*|$))+/;
   function notesOf(e) { return String(e.notes || '').replace(PB_RE, '').replace(TAG_RE, '').trim(); }
   // Notes keep the payer and phase in front ("Paid by: Zina · Selling · At Sale · …") so they survive any backend version.
   function tagNotes(payer, phase, atSale, text) {
     var t = String(text || '').replace(PB_RE, '').replace(TAG_RE, '').trim();
+    // Purchase cash is partner capital, never a cost; the phrase keeps it out of the P&L on any backend version.
+    if (phase === 'Purchase Cash' && !/Not in the deal P&L/i.test(t)) t = 'Not in the deal P&L (partner capital toward the price)' + (t ? ' · ' + t : '');
     return [payer ? 'Paid by: ' + payer : '', phase, atSale ? 'At Sale' : '', t].filter(Boolean).join(' · ');
   }
   function datePill(e) { return fmtDate(e.date) || '<span class="pill' + (C.atSaleOf(e) ? '' : ' warn') + '">' + (C.atSaleOf(e) ? 'At Sale' : 'Needs Date') + '</span>'; }
@@ -1085,13 +1088,19 @@
       EX.cats = res[0].categories; EX.props = res[1] || []; EX.after = function () { viewFlip(f.id); };
       var rows = res[0].items.filter(function (e) { return e.linkId === f.id; }).sort(function (a, b) { return (b.date || '0') < (a.date || '0') ? -1 : 1; });
       PXC[f.id] = rows;
-      var total = rows.reduce(function (t, e) { return t + e.amount; }, 0), byCat = {};
-      var off = rows.filter(function (e) { return C.DEAL_PHASES.indexOf(C.phaseOf(e)) < 0; }).reduce(function (t, e) { return t + e.amount; }, 0);
-      rows.forEach(function (e) { byCat[e.category || 'Other'] = (byCat[e.category || 'Other'] || 0) + e.amount; });
-      var byPay = {}; rows.forEach(function (e) { var k = payerOf(e) || 'Not recorded'; byPay[k] = (byPay[k] || 0) + e.amount; });
+      // Purchase Cash entries are partners' money toward the price: their capital, shown on its own line, not an expense.
+      var isPc = function (e) { return C.phaseOf(e) === 'Purchase Cash'; };
+      var exp = rows.filter(function (e) { return !isPc(e); }), pcs = rows.filter(isPc);
+      var total = exp.reduce(function (t, e) { return t + e.amount; }, 0), byCat = {};
+      var pcTot = pcs.reduce(function (t, e) { return t + e.amount; }, 0), byPc = {};
+      pcs.forEach(function (e) { var k = payerOf(e) || 'Not recorded'; byPc[k] = (byPc[k] || 0) + e.amount; });
+      var off = exp.filter(function (e) { return C.DEAL_PHASES.indexOf(C.phaseOf(e)) < 0; }).reduce(function (t, e) { return t + e.amount; }, 0);
+      exp.forEach(function (e) { byCat[e.category || 'Other'] = (byCat[e.category || 'Other'] || 0) + e.amount; });
+      var byPay = {}; exp.forEach(function (e) { var k = payerOf(e) || 'Not recorded'; byPay[k] = (byPay[k] || 0) + e.amount; });
       var pays = Object.keys(byPay).sort(function (a, b) { return byPay[b] - byPay[a]; }).map(function (k) { return '<span class="pill">' + esc(k) + ' ' + money(byPay[k], 0) + '</span>'; }).join(' ');
       var cats = Object.keys(byCat).sort(function (a, b) { return byCat[b] - byCat[a]; }).slice(0, 3).map(function (k) { return esc(k) + ' ' + money(byCat[k], 0); }).join(' · ');
-      host.innerHTML = '<div class="card tblwrap"><div class="spread" style="padding:16px 18px 14px;align-items:center"><div><div class="kpi"><div class="k">Total Expenses' + info(off ? money(off) + ' of these entries are marked Excluded or Operating, so they are not in the deal numbers' : '') + '</div><div class="v" style="font-size:24px;margin-top:6px">' + money(total) + '</div><div class="meta">' + rows.length + ' entr' + (rows.length === 1 ? 'y' : 'ies') + '' + '</div>' + (rows.length ? '<div class="paidby" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px"><span class="meta" style="align-self:center">Paid by</span> ' + pays + '</div>' : '') + '</div></div>' +
+      host.innerHTML = '<div class="card tblwrap"><div class="spread" style="padding:16px 18px 14px;align-items:center"><div><div class="kpi"><div class="k">Total Expenses' + info(off ? money(off) + ' of these entries are marked Excluded or Operating, so they are not in the deal numbers' : '') + '</div><div class="v" style="font-size:24px;margin-top:6px">' + money(total) + '</div><div class="meta">' + exp.length + ' entr' + (exp.length === 1 ? 'y' : 'ies') + '' + '</div>' + (exp.length ? '<div class="paidby" style="margin-top:10px;display:flex;flex-wrap:wrap;gap:6px"><span class="meta" style="align-self:center">Paid by</span> ' + pays + '</div>' : '') + '</div>' +
+        (pcs.length ? '<div class="kpi" style="margin-top:14px"><div class="k">Purchase Cash' + info('Partners’ money toward the purchase price (down payment, deposits, wires, refunds). It is their capital, not an expense, so it is not in Total Expenses.') + '</div><div class="v" style="font-size:20px;margin-top:6px">' + money(pcTot) + '</div><div class="paidby" style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">' + Object.keys(byPc).map(function (k) { return '<span class="pill">' + esc(k) + ' ' + money(byPc[k], 0) + '</span>'; }).join(' ') + '</div></div>' : '') + '</div>' +
         '<div class="row"><button class="btn sm" id="pxcsv">Export CSV</button><button class="btn sm gold" id="pxadd">Add Expense</button></div></div>' +
         '<table class="t"><thead><tr><th>Date</th><th>Payee</th><th>Category</th><th>Paid By</th><th>Method</th><th class="r">Amount</th><th>Receipt</th><th></th></tr></thead><tbody>' +
         (rows.length ? rows.map(function (e) {

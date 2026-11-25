@@ -107,7 +107,9 @@
   /** Expense ledger: every number on a flip or holding is derived from its expense entries.
       phase: Buying | Rehab | Holding | Selling | After Sale (in the deal P&L) · Operating | Excluded (not in the deal P&L).
       atSale: paid out of the sale proceeds through escrow (projected until the sale closes), so nobody's capital. */
-  var LEDGER_PHASES = ['Buying', 'Rehab', 'Holding', 'Selling', 'After Sale', 'Operating', 'Excluded'];
+  var LEDGER_PHASES = ['Buying', 'Rehab', 'Holding', 'Selling', 'After Sale', 'Operating', 'Excluded', 'Purchase Cash'];
+  // 'Purchase Cash': a partner's money toward the purchase price itself (down payment, EMD, wires, refunds). It is that
+  // partner's capital, but not a cost (the price is already in the numbers), so it is outside the deal P&L and the expense total.
   var LEDGER_DEAL = ['Buying', 'Rehab', 'Holding', 'Selling', 'After Sale'];
   var LEDGER_PB = /^Paid by:\s*([^·]+?)\s*(?:·\s*|$)/;
   function ledgerNum(v) { var x = Number(String(v == null ? '' : v).replace(/[$,\s]/g, '')); return isFinite(x) ? x : 0; }
@@ -121,6 +123,7 @@
   function ledgerPhase(e) {
     if (LEDGER_PHASES.indexOf(e.phase) >= 0) return e.phase;
     var notes = String(e.notes || ''), payee = String(e.payee || ''), cat = String(e.category || '');
+    if (/(?:^|·)\s*Purchase Cash\s*(?:·|$)/.test(notes.replace(LEDGER_PB, '')) || cat === 'Purchase Cash') return 'Purchase Cash';
     if (/Not in the (flip|deal) P&L/i.test(notes)) return 'Excluded';
     var m = /(?:^|·)\s*(Buying|Rehab|Holding|Selling|After Sale|Operating|Excluded)\s*(?:·|$)/.exec(notes.replace(LEDGER_PB, ''));
     if (m) return m[1];
@@ -134,12 +137,13 @@
   }
   /** items: the expense rows linked to one property. Returns bucket sums, who paid what during the deal, and what escrow pays at sale. */
   function ledger(items) {
-    var L = { count: 0, buying: 0, rehab: 0, holding: 0, selling: 0, after: 0, operating: 0, excluded: 0, deal: 0, total: 0, atSaleTotal: 0, atSale: [], paid: {}, afterPaid: {} };
+    var L = { count: 0, buying: 0, rehab: 0, holding: 0, selling: 0, after: 0, operating: 0, excluded: 0, deal: 0, total: 0, atSaleTotal: 0, atSale: [], paid: {}, afterPaid: {}, purchase: 0, purchasePaid: {} };
     var key = { 'Buying': 'buying', 'Rehab': 'rehab', 'Holding': 'holding', 'Selling': 'selling', 'After Sale': 'after', 'Operating': 'operating', 'Excluded': 'excluded' };
     var r = function (x) { return Math.round(x * 100) / 100; };
     (items || []).forEach(function (e) {
       if (!e || String(e.deleted) === '1') return;
       var a = ledgerNum(e.amount), ph = ledgerPhase(e), at = ledgerAtSale(e), who = ledgerPayer(e) || 'Not recorded';
+      if (ph === 'Purchase Cash') { L.purchase += a; L.purchasePaid[who] = r((L.purchasePaid[who] || 0) + a); return; }
       L.count++; L.total += a; L[key[ph]] += a;
       if (LEDGER_DEAL.indexOf(ph) < 0) return;
       L.deal += a;
@@ -147,7 +151,7 @@
       else if (ph === 'After Sale') L.afterPaid[who] = r((L.afterPaid[who] || 0) + a);
       else L.paid[who] = r((L.paid[who] || 0) + a);
     });
-    ['buying', 'rehab', 'holding', 'selling', 'after', 'operating', 'excluded', 'deal', 'total', 'atSaleTotal'].forEach(function (k) { L[k] = r(L[k]); });
+    ['buying', 'rehab', 'holding', 'selling', 'after', 'operating', 'excluded', 'deal', 'total', 'atSaleTotal', 'purchase'].forEach(function (k) { L[k] = r(L[k]); });
     return L;
   }
   /** Group a full expense list by property id. */
@@ -162,6 +166,7 @@
   function ledgerSetupRow(x) { return x && (x.payout || x.meta); }
   /** Apply a property's expense ledger: cost buckets, capital per partner and cash in all come from the entries.
       Settings that stay on the property: price, loan, sale price, credits, rehab budget, each partner's purchase cash and split. */
+  function ledgerSum(m, name) { var t = 0; for (var p in m || {}) if (ledgerPayerMatches(p, name)) t += m[p]; return ledgerR2(t); }
   function ledgerLive(f) {
     var L = f && f.ledger;
     if (!L) return f;
@@ -169,14 +174,18 @@
     g.buyClosingCosts = L.buying; g.rehabSpent = L.rehab; g.holdingCosts = L.holding; g.sellingCosts = L.selling; g.otherCosts = L.after;
     if (L.after && !g.otherCostsLabel) g.otherCostsLabel = 'After-Sale Costs';
     var rows = (f.investors || []).filter(function (x) { return x && !ledgerSetupRow(x); });
-    var linked = rows.length && rows.every(function (x) { return x.purchaseCash !== undefined && x.purchaseCash !== null; });
+    // Purchase cash comes from 'Purchase Cash' entries. Older ledgers (backend 1.4.0) don't carry them, and a property
+    // with none yet falls back to the amount stored on each partner row, so the numbers never jump while data moves over.
+    var fromEntries = !!(L.purchasePaid && Object.keys(L.purchasePaid).length);
     var matched = {};
-    if (linked) {
+    if (rows.length) {
       g.investors = rows.map(function (x) {
         var spent = 0;
         for (var p in L.paid) if (ledgerPayerMatches(p, x.name)) { spent += L.paid[p]; matched[p] = 1; }
+        for (var q0 in L.purchasePaid || {}) if (ledgerPayerMatches(q0, x.name)) matched['\u0000' + q0] = 1;
+        var put = fromEntries ? ledgerSum(L.purchasePaid, x.name) : ledgerNum(x.purchaseCash);
         var o = {}; for (var j in x) o[j] = x[j];
-        o.purchaseCash = ledgerR2(ledgerNum(x.purchaseCash)); o.expensesPaid = ledgerR2(spent); o.capital = ledgerR2(ledgerNum(x.purchaseCash) + spent);
+        o.purchaseCash = ledgerR2(put); o.expensesPaid = ledgerR2(spent); o.capital = ledgerR2(put + spent);
         return o;
       }).concat((f.investors || []).filter(ledgerSetupRow));
       g.cashInvested = ledgerR2(g.investors.filter(function (x) { return !ledgerSetupRow(x); }).reduce(function (t, x) { return t + x.capital; }, 0));
@@ -184,12 +193,12 @@
       var paid = 0; for (var q in L.paid) paid += L.paid[q];
       g.cashInvested = ledgerR2(Math.max(0, ledgerNum(f.purchasePrice) - ledgerNum(f.loanAmount)) + paid);
     }
-    g.unmatchedPaid = {}; if (linked) for (var u in L.paid) if (!matched[u]) g.unmatchedPaid[u] = L.paid[u];
-    g._live = !!linked || !rows.length;
+    g.unmatchedPaid = {};
+    if (rows.length) { for (var u in L.paid) if (!matched[u]) g.unmatchedPaid[u] = L.paid[u]; for (var v in L.purchasePaid || {}) if (!matched['\u0000' + v]) g.unmatchedPaid[v] = ledgerR2((g.unmatchedPaid[v] || 0) + L.purchasePaid[v]); }
+    g._live = true;
     return g;
   }
   /* LEDGER-END */
-
   /** Purchase To Payout, built from the live numbers (never stored). */
   function payoutOf(f, x) {
     var L = f.ledger, inv = x.investors, sold = f.status === 'Sold';
@@ -289,6 +298,6 @@
       totalRoi: cash > 0 && value > 0 ? (equity - cash + (hasIncome ? cf * 12 : 0)) / cash : null, noi: r2(hasIncome ? cf * 12 : 0), cashFlowToDate: r2(cfToDate), monthsHeld: months, daysHeld: days };
   }
 
-  var api = { splitsOf: splitsOf, payerMatches: ledgerPayerMatches, estimate: estimate, flip: flip, holding: holding, live: ledgerLive, ledger: ledger, ledgers: ledgers, phaseOf: ledgerPhase, atSaleOf: ledgerAtSale, payerOf: ledgerPayer, PHASES: LEDGER_PHASES, DEAL_PHASES: LEDGER_DEAL, daysBetween: daysBetween, annualize: annualize, n: n };
+  var api = { splitsOf: splitsOf, ledgerSum: ledgerSum, payerMatches: ledgerPayerMatches, estimate: estimate, flip: flip, holding: holding, live: ledgerLive, ledger: ledger, ledgers: ledgers, phaseOf: ledgerPhase, atSaleOf: ledgerAtSale, payerOf: ledgerPayer, PHASES: LEDGER_PHASES, DEAL_PHASES: LEDGER_DEAL, daysBetween: daysBetween, annualize: annualize, n: n };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.FlipCalc = api;
 })(this);
