@@ -33,6 +33,13 @@
   function signed(html, v) { return v > 0 ? '<span class="pos">' + html + '</span>' : (v < 0 ? '<span class="neg">' + html + '</span>' : '<span>' + html + '</span>'); }
   function sMoney(v, dec) { return signed(money(v, dec), v); }
   function sPct(v) { return v == null ? '—' : signed(pct(v), v); }
+  // Display-only: compound annualized explodes on short holds; show it only at 90+ days, and never a non-finite or >1000% figure.
+  function annualizedDisplay(x) {
+    if (!x || x.simpleAnnual == null || !isFinite(x.simpleAnnual)) return { title: 'Annualized (Simple)', html: '<span class="pill warn">Needs Date</span>', text: '—' };
+    var simple = sPct(x.simpleAnnual), days = x.daysHeld || 0;
+    var c = x.compoundAnnual, showC = days >= 90 && c != null && isFinite(c) && Math.abs(c) <= 10;
+    return { title: showC ? 'Annualized (Simple / Compound)' : 'Annualized (Simple)', html: showC ? simple + ' <span class="meta">/ ' + pct(c) + '</span>' : simple, text: showC ? simple + ' / ' + pct(c) : simple };
+  }
   function depositsHeld(f) { var m = /Security deposits held: \$([\d,]+(?:\.\d+)?)/i.exec(f && f.notes || ''); return m ? Number(m[1].replace(/,/g, '')) : 0; }
   function soldYear(f) { var m = /Sold (\d{4})\b/.exec(f && f.datesNote || ''); return m ? m[1] : ''; }
   function soldCell(f) { return fmtDate(f.saleDate) || ((soldYear(f) ? soldYear(f) + ' ' : '') + '<span class="pill warn">Needs Date</span>'); }
@@ -487,9 +494,24 @@
   }
 
   /* ---------- flip detail ---------- */
-  function viewFlip(id) {
+  var afterFlipRender = null;
+  function whenFlipRendered(fn) { afterFlipRender = fn; }
+  function runAfterFlipRender(f) {
+    var fn = afterFlipRender; afterFlipRender = null;
+    if (fn) fn(f);
+  }
+  function refreshFlipView(id, thenFn) {
+    expensesChanged();
+    if (thenFn) whenFlipRendered(thenFn);
+    viewFlip(id);
+  }
+  function viewFlip(id, overlay) {
     loading();
     getFlipLive(id).then(function (f) {
+      if (overlay) {
+        Object.keys(overlay).forEach(function (k) { if (overlay[k] != null && overlay[k] !== '') f[k] = overlay[k]; });
+        f._liveApplied = false;
+      }
       if (isHolding(f)) { setMode('holdings'); return renderHolding(f); }
       setMode('flips');
       TIPS = { f: f, edit: !!pageEdit && (isOwner() || f.canManage) };
@@ -510,7 +532,7 @@
         kpi(sold ? 'Profit' : 'Projected Profit', sMoney(x.profit, 0), sold ? 'Sale minus every cost' : 'At a ' + money(f.salePrice, 0) + ' sale', x.profit < 0 ? 'bad' : 'good') +
         kpi('Return On Cash', sPct(x.roiCash), 'On ' + money(f.cashInvested, 0) + ' cash in') +
         kpi('Return On Total Cost', sPct(x.roiCost), 'On ' + money(x.totalCost, 0) + ' all-in') +
-        kpi(sold ? 'Annualized (Simple / Compound)' : 'Days Held So Far', sold ? (x.simpleAnnual == null ? '<span class="pill warn">Needs Date</span>' : sPct(x.simpleAnnual) + ' <span class="meta">/ ' + pct(x.compoundAnnual) + '</span>') : (x.daysHeld || '—'),
+        kpi(sold ? annualizedDisplay(x).title : 'Days Held So Far', sold ? annualizedDisplay(x).html : (x.daysHeld || '—'),
           sold ? (x.daysHeld ? x.daysHeld + ' days, purchase to sale' : 'Add the sale close date') : 'Since ' + (fmtDate(f.purchaseDate) || 'purchase')) + '</div>';
       html += '<div class="grid g2" style="margin-top:22px"><div class="card rule"><h2>The Numbers' + info(f.notes || '', 'h:Notes') + '</h2><div class="lines">' +
         ln('Purchase Price', money(f.purchasePrice)) + ln('Loan' + (f.lender ? ' · ' + esc(f.lender) : ''), money(f.loanAmount)) + (f.interestRate ? ln('Interest Rate', (Number(f.interestRate) || 0).toFixed(3).replace(/\.?0+$/, '') + '%') : '') +
@@ -542,9 +564,12 @@
       if (st) st.onchange = function () {
         var s = st.value;
         var go = function (saleDate, salePrice) {
+          var overlay = { status: s };
+          if (saleDate) overlay.saleDate = saleDate;
+          if (s === 'Sold' && salePrice != null && salePrice !== '') overlay.salePrice = salePrice;
           var p = api('setStatus', { id: f.id, status: s, saleDate: saleDate || '' });
           if (s === 'Sold' && salePrice != null && salePrice !== '') p = p.then(function () { return api('updateFlip', { id: f.id, flip: { salePrice: salePrice } }); });
-          p.then(function () { toast('Status set to ' + s + (s === 'Sold' ? '. Moved to the Archive.' : '.')); S.flips = null; viewFlip(f.id); }).catch(function (e) { fail(e); st.value = f.status; });
+          p.then(function () { toast('Status set to ' + s + (s === 'Sold' ? '. Moved to the Archive.' : '.')); expensesChanged(); viewFlip(f.id, overlay); }).catch(function (e) { fail(e); st.value = f.status; });
         };
         if (s === 'In Escrow' && f.status !== 'In Escrow' && can) {
           partnersPrompt(f, 'Who Are The Partners?', 'Save And Move To In Escrow', function () { go(); }, function () { st.value = f.status; });
@@ -566,7 +591,8 @@
       document.querySelectorAll('[data-rm]').forEach(function (b) { b.onclick = function () { confirmBox('Remove Access', '<p>This user will no longer see ' + esc(f.address) + '.</p>', 'Remove', function () { api('removeAccess', { flipId: f.id, userId: b.dataset.rm }).then(function () { toast('Access removed.'); viewFlip(f.id); }).catch(fail); }); }; });
       document.querySelectorAll('[data-resend]').forEach(function (b) { b.onclick = function () { b.disabled = true; api('resendInvite', { flipId: f.id, userId: b.dataset.resend }).then(function () { toast('Invite emailed.'); }).catch(fail).then(function () { b.disabled = false; }); }; });
       bindEstRows();
-    }).catch(function (e) { $app.innerHTML = '<p class="empty">' + esc(e.message) + '</p>'; });
+      runAfterFlipRender(f);
+    }).catch(function (e) { afterFlipRender = null; $app.innerHTML = '<p class="empty">' + esc(e.message) + '</p>'; });
   }
 
   // Internal notes: anyone who can see the property can add notes; only the author or the owner edits or deletes. Never in PDFs.
@@ -661,7 +687,7 @@
     var L0 = ledger || {}, fromEntries = !!(L0.purchasePaid && Object.keys(L0.purchasePaid).length);
     var capOf = function (s) { return Math.round((C.ledgerSum(L0.paid, s.name) + (fromEntries ? C.ledgerSum(L0.purchasePaid, s.name) : Number(s.storedPc) || 0)) * 100) / 100; };
     var state = rows.map(function (r) { return { name: r.name || '', storedPc: Number(r.purchaseCash) || 0, split: Number(r.split) || 0, auto: r.splitMode === 'auto', note: r.note || '', orig: r }; });
-    if (!state.length) state.push({ name: '', storedPc: 0, split: 0, auto: true, note: '' });
+    // Leave an empty list empty: a blank placeholder row looked like a 100% partner and could confuse a save.
     function calc() {
       var rs = state.map(function (s) { return { name: s.name, capital: capOf(s), split: s.split, splitMode: s.auto ? 'auto' : 'manual' }; });
       return C.splitsOf(rs);
@@ -791,11 +817,11 @@
           '</tbody></table></div>' +
           '<div class="spread" style="margin-top:12px;align-items:center"><div><span class="meta">Total</span>' + lock('Sum of the line items — locked') + ' <b class="num">' + money(tot) + '</b></div>' +
           (own ? '<div class="row"><button type="button" class="btn gold" id="cadd">Add Line Item</button><button type="button" class="btn" id="close-done">Done</button></div>' : '<button type="button" class="btn" id="close-done">Close</button>') + '</div>', function (m) {
-          m.querySelector('#close-done').onclick = function () { closeModal(); if (reopen !== false) viewFlip(f.id); };
+          m.querySelector('#close-done').onclick = function () { closeModal(); refreshFlipView(f.id); };
           var add = m.querySelector('#cadd');
-          if (add) add.onclick = function () { closeModal(); editExpense({ date: todayISO(), payee: '', category: 'Closing Costs', amount: '', method: '', phase: kind, linkType: 'flip', linkId: f.id }, f, { phase: kind, after: function () { openClosingItems(f, kind); } }); };
-          m.querySelectorAll('[data-ce]').forEach(function (b) { b.onclick = function () { var row = items.filter(function (e) { return e.id === b.dataset.ce; })[0]; closeModal(); editExpense(row, f, { after: function () { openClosingItems(f, kind); } }); }; });
-          m.querySelectorAll('[data-cd]').forEach(function (b) { b.onclick = function () { confirmBox('Remove Line Item', '<p>Remove this line from ' + esc(label) + '? The locked total will update right away.</p>', 'Remove', function () { api('deleteExpense', { id: b.dataset.cd }).then(function () { expensesChanged(); toast('Removed.'); openClosingItems(f, kind); }).catch(fail); }); }; });
+          if (add) add.onclick = function () { closeModal(); editExpense({ date: todayISO(), payee: '', category: 'Closing Costs', amount: '', method: '', phase: kind, linkType: 'flip', linkId: f.id }, f, { phase: kind, after: function () { refreshFlipView(f.id, function () { openClosingItems(f, kind); }); } }); };
+          m.querySelectorAll('[data-ce]').forEach(function (b) { b.onclick = function () { var row = items.filter(function (e) { return e.id === b.dataset.ce; })[0]; closeModal(); editExpense(row, f, { after: function () { refreshFlipView(f.id, function () { openClosingItems(f, kind); }); } }); }; });
+          m.querySelectorAll('[data-cd]').forEach(function (b) { b.onclick = function () { confirmBox('Remove Line Item', '<p>Remove this line from ' + esc(label) + '? The locked total will update right away.</p>', 'Remove', function () { api('deleteExpense', { id: b.dataset.cd }).then(function () { toast('Removed.'); refreshFlipView(f.id, function () { openClosingItems(f, kind); }); }).catch(fail); }); }; });
         });
       }).catch(fail);
     };
@@ -814,7 +840,8 @@
     var html = '<h2>' + (isNew ? (hold ? 'New Holding' : 'New Flip') : 'Edit') + '</h2><p class="sub2">' + (led ? 'Type the base inputs (price, loan, rate, sale, rent, budget, dates). Cost totals are locked and come from expenses or the (i) line items on the Numbers card. Click an (i) on this page to add or edit its note. Remove Property is at the bottom.' : 'Enter the property, loan and dates. You can type a starting cost total; it is saved as one unitemized expense line you can break out later.') + '</p><div class="calcgrid">' + FIELDS.map(function (x) {
       var k = x[0], typ = x[2], der = DERIVED[k], ro = led && der, v = (led && der) ? g[k] : f[k];
       if (typ === 'num' && v !== '' && v != null) v = (k === 'interestRate') ? String(v) : m2(v);
-      var lab = x[1] + (der ? lock('Total of this property’s expense entries — locked. Edit them via the (i) on Buying/Selling Closing Costs, or in Expenses.') + info(led ? 'Locked total of this property’s expense entries. Use (i) on the Numbers card for closing-cost line items, or Expenses for rehab, holding and other costs.' : 'On a new property, a typed total is saved as one unitemized expense line you can break out later.') : '');
+      var closeK = (!isNew && led && k === 'buyClosingCosts') ? 'Buying' : (!isNew && led && k === 'sellingCosts') ? 'Selling' : '';
+      var lab = x[1] + (closeK ? closeInfo(closeK, x[1]) : (der ? lock('Total of this property’s expense entries — locked. Edit them via the (i) on Buying/Selling Closing Costs, or in Expenses.') + info(led ? 'Locked total of this property’s expense entries. Use (i) on the Numbers card for closing-cost line items, or Expenses for rehab, holding and other costs.' : 'On a new property, a typed total is saved as one unitemized expense line you can break out later.') : ''));
       if (typ === 'area') return '<div class="field" style="grid-column:1/-1"><label>' + lab + '</label><textarea data-k="' + k + '" rows="2">' + esc(v == null ? '' : v) + '</textarea></div>';
       return '<div class="field"><label>' + lab + '</label><input data-k="' + k + '" type="' + (typ === 'date' ? 'date' : 'text') + '" ' + (typ === 'num' ? 'inputmode="decimal"' : '') + (ro ? ' readonly tabindex="-1" class="ro"' : '') + ' value="' + esc(v == null ? '' : v) + '"></div>';
     }).join('') + (led ? '<div class="field"><label>Cash Invested' + lock('Each partner’s purchase cash plus the expenses they paid, live from the expense entries — locked') + info('Each partner’s purchase cash plus the expenses they paid, live from the expense entries') + '</label><input class="ro" readonly tabindex="-1" value="' + esc(m2(cashIn)) + '"></div>' : '') + '</div>' +
@@ -828,8 +855,27 @@
       if (cx) cx.onclick = function () { if (host) exitEditMode(f); else closeModal(); };
       var rm = root.querySelector('#ed-rmprop');
       if (rm) rm.onclick = function () {
-        confirmBox('Remove Property', '<p>Soft-delete <b>' + esc(f.address) + '</b>? It will disappear from Flips and Holdings. This does not edit other deals.</p>', 'Remove', function () {
-          api('deleteFlip', { id: f.id }).then(function () { pageEdit = false; S.flips = null; closeModal(); toast('Removed.'); location.hash = hold ? '#/holdings' : '#/flips'; }).catch(fail);
+        modal('<h2>Remove Property</h2><p class="sub2">Soft-delete <b>' + esc(f.address) + '</b>? It will disappear from Flips and Holdings. This does not edit other deals.</p>' +
+          '<label class="check" style="margin:12px 0"><input type="checkbox" id="rm-exps"> Also soft-delete this property’s expense entries (off by default)</label>' +
+          '<div class="row"><button type="button" class="btn gold danger" id="rm-ok">Remove</button><button type="button" class="btn" id="rm-cx">Cancel</button></div>', function (m) {
+          m.querySelector('#rm-cx').onclick = closeModal;
+          m.querySelector('#rm-ok').onclick = function () {
+            var alsoEx = !!(m.querySelector('#rm-exps') && m.querySelector('#rm-exps').checked);
+            closeModal();
+            var dest = hold ? '#/holdings' : (f.status === 'Sold' ? '#/archive' : '#/flips');
+            var done = function (nEx) {
+              pageEdit = false; expensesChanged(); toast(nEx ? 'Removed, including ' + nEx + ' expense entr' + (nEx === 1 ? 'y' : 'ies') + '.' : 'Removed.');
+              if (location.hash === dest) { if (hold) viewHoldings(); else viewFlips(f.status === 'Sold'); }
+              else location.hash = dest;
+            };
+            api('deleteFlip', { id: f.id }).then(function () {
+              if (!alsoEx) return done(0);
+              return expensesQ().then(function (res) {
+                var rows = (res.items || []).filter(function (e) { return e.linkId === f.id && String(e.deleted) !== '1'; });
+                return rows.reduce(function (p0, e) { return p0.then(function () { return api('deleteExpense', { id: e.id }); }); }, Promise.resolve()).then(function () { return done(rows.length); });
+              });
+            }).catch(fail);
+          };
         });
       };
       root.querySelector('#ed-save').onclick = function () {
@@ -958,7 +1004,7 @@
         '<div class="lines">' + ln('Loan / LTV', money(r.loanAmount, 0) + ' · ' + pct(r.ltv)) + ln('Cash To Close', money(r.cashToClose)) + ln('Buying Costs (Net, With Points)', money(r.buyingCosts)) + ln('Rehab (With Contingency)', money(r.rehabUsed)) +
         ln('Loan Interest', money(r.interest)) + ln('Property Taxes' + (i.propertyTaxes === '' ? ' (Auto)' : ''), money(r.taxHold)) + ln('Insurance' + (i.insuranceHold === '' ? ' (Auto)' : ''), money(r.insuranceHold)) + ln('Utilities' + (i.utilities === '' ? ' (Auto)' : ''), money(r.utilitiesHold)) + ln('Holding Costs (Total)', money(r.holdingCosts)) + ln('Selling Costs', money(r.sellingCosts)) + ln('Total Cost', money(r.totalCost), 'tot') +
         ln('Profit', sMoney(r.profit), 'tot') + ln('Cash Invested', money(r.cashInvested)) + ln('Return On Cash', sPct(r.roiCash)) + ln('Return On Total Cost', sPct(r.roiCost)) +
-        ln('Annualized Simple / Compound', r.simpleAnnual == null ? '—' : sPct(r.simpleAnnual) + ' / ' + sPct(r.compoundAnnual)) + '</div>' +
+        ln(annualizedDisplay(r).title, r.simpleAnnual == null ? '—' : annualizedDisplay(r).html) + '</div>' +
         (r.over80 ? '<p class="note bad" style="margin-top:12px">Purchase price is over 80% of the sale price.</p>' : '');
       var bi = r.items.buying, si = r.items.selling, byName = function (list, nm) { return (list.filter(function (x) { return x[0] === nm; })[0] || [0, 0])[1]; };
       var amap = { buyEscrowPct: byName(bi, 'Escrow Fee'), buyTitlePct: byName(bi, 'Title / Lender Policy'), listingPct: byName(si, 'Listing Commission'), buyerPct: byName(si, 'Buyer Commission'), sellEscrowPct: byName(si, 'Escrow Fee'), sellTitlePct: byName(si, 'Owner’s Title Policy'), countyTTper1k: byName(si, 'County Transfer Tax'), cityTTper1k: byName(si, 'City Transfer Tax') };
@@ -1152,10 +1198,11 @@
     $app.innerHTML = html; animate();
     renderInventory('flip', f.id, f.inventory || [], can); propExpenses(f); renderTNotes(f);
     var st = document.getElementById('st');
-    if (st) st.onchange = function () { api('setStatus', { id: f.id, status: st.value }).then(function () { toast('Status set to ' + st.value + '.'); S.flips = null; viewFlip(f.id); }).catch(function (e) { fail(e); st.value = f.status; }); };
+    if (st) st.onchange = function () { api('setStatus', { id: f.id, status: st.value }).then(function () { toast('Status set to ' + st.value + '.'); expensesChanged(); viewFlip(f.id, { status: st.value }); }).catch(function (e) { fail(e); st.value = f.status; }); };
     bindInvestors(f);
     bindPdf(function () { return pdfPropData(f, x); }, 'holding', 'Holding Report', f.address); bindTipToggle(f, { can: can });
     if (typeof bindEstRows === 'function') bindEstRows();
+    runAfterFlipRender(f);
   }
 
   /* ---------- LANA HOMES Expenses (owner only) ---------- */
