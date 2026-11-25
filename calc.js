@@ -311,11 +311,16 @@
     var end = h.status === 'Sold' && h.saleDate ? h.saleDate : (today || new Date().toISOString().slice(0, 10));
     var days = h.purchaseDate ? daysBetween(h.purchaseDate, end) : null;
     var months = days == null ? null : Math.max(0, Math.floor(days / 30.4375));
-    var cfToDate = months == null || !hasIncome ? 0 : cf * months;
+    // Months held stays purchase-to-now (ownership). Rent collected / cash flow to date use rented-since, falling back to purchase.
+    var rentStart = h.rentalStart || h.purchaseDate;
+    var daysRented = rentStart ? daysBetween(rentStart, end) : null;
+    var monthsRented = daysRented == null ? null : Math.max(0, Math.floor(daysRented / 30.4375));
+    var cfToDate = monthsRented == null || !hasIncome ? 0 : cf * monthsRented;
+    var rentToDate = monthsRented == null || !inc ? 0 : inc * monthsRented;
     return { rent: r2(inc), expenses: r2(exp), value: r2(value), loanBalance: r2(bal), cashInvested: r2(cash), allIn: r2(allIn), equity: r2(equity), hasIncome: hasIncome,
       monthlyCashFlow: r2(cf), annualCashFlow: r2(cf * 12), cashOnCash: cash > 0 && hasIncome ? cf * 12 / cash : null,
       equityRoi: cash > 0 && value > 0 ? (equity - cash) / cash : null,
-      totalRoi: cash > 0 && value > 0 ? (equity - cash + (hasIncome ? cf * 12 : 0)) / cash : null, noi: r2(hasIncome ? cf * 12 : 0), cashFlowToDate: r2(cfToDate), monthsHeld: months, daysHeld: days };
+      totalRoi: cash > 0 && value > 0 ? (equity - cash + (hasIncome ? cf * 12 : 0)) / cash : null, noi: r2(hasIncome ? cf * 12 : 0), cashFlowToDate: r2(cfToDate), rentToDate: r2(rentToDate), monthsHeld: months, daysHeld: days, monthsRented: monthsRented, daysRented: daysRented, rentalStart: rentStart || '' };
   }
 
   var api = { splitsOf: splitsOf, ledgerSum: ledgerSum, payerMatches: ledgerPayerMatches, estimate: estimate, flip: flip, holding: holding, live: ledgerLive, ledger: ledger, ledgers: ledgers, phaseOf: ledgerPhase, atSaleOf: ledgerAtSale, payerOf: ledgerPayer, PHASES: LEDGER_PHASES, DEAL_PHASES: LEDGER_DEAL, daysBetween: daysBetween, annualize: annualize, n: n, downPayment: downPayment, cashToPurchase: cashToPurchase, parseOverrides: parseOverrides, applyOverrides: applyOverrides };

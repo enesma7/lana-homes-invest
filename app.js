@@ -627,14 +627,14 @@
   // Purchase To Payout: cash put in at purchase, who funded what, what the sale closing paid off, and who got paid.
   function payoutCard(p) {
     var ln = function (r, cls) {
-      var lk = cls === 'tot' || /^(Cash To Purchase|Total Cash Invested|Paid Out To Partners|Total To Partners|Net Proceeds|Buying Closing Costs)\b/i.test(String(r[0] || ''));
+      var lk = cls === 'tot' || /^(Cash To Purchase|Total Cash Invested|Total To Partners|Net Proceeds|Buying Closing Costs)\b/i.test(String(r[0] || ''));
       return '<div class="ln' + (cls ? ' ' + cls : '') + '"><span>' + esc(r[0]) + (lk ? lock('Calculated total — locked') : '') + info(r[2], 'po:' + plain(r[0])) + '</span><span class="num">' + (r[1] < 0 ? '<span class="neg">−' + money(-r[1]) + '</span>' : money(r[1])) + '</span></div>';
     };
     var block = function (title, rows, tot) { return rows && rows.length ? '<div class="label" style="margin:14px 0 4px">' + esc(title) + '</div><div class="lines">' + rows.map(function (r) { return ln(r); }).join('') + (tot ? ln(tot, 'tot') : '') + '</div>' : ''; };
     return '<div class="label">' + esc(p.title || 'Purchase To Payout') + info(p.source ? 'Source: ' + p.source : '', 'po:Title') + '</div><div class="grid g2"><div class="card rule"><h2>Invested</h2>' +
       block('At Purchase', p.purchase, p.purchaseTotal) + block('Cash Invested By Partner', p.capital, p.capitalTotal) + '</div>' +
       '<div class="card rule"><h2>' + esc(p.saleTitle || 'Paid Out') + '</h2>' +
-      block(p.saleLabel || 'At Sale Closing', p.sale, p.saleTotal) + (p.saleNet ? '<div class="lines">' + ln(p.saleNet, 'tot') + '</div>' : '') + block(p.paidLabel || 'Paid Out To', p.paid, p.paidTotal) + '</div></div>' +
+      block(p.saleLabel || 'At Sale Closing', p.sale, p.saleNet) + block(p.paidLabel || 'Paid Out To', p.paid, p.paidTotal) + '</div></div>' +
       '';
   }
 
@@ -655,9 +655,9 @@
   var FLIP_FIELDS = [['address', 'Property Address', 'text'], ['city', 'City, State Zip', 'text'], ['purchaseDate', 'Purchase Close Date', 'date'], ['saleDate', 'Sale Close Date', 'date'],
     ['purchasePrice', 'Purchase Price', 'num'], ['loanAmount', 'Loan Amount', 'num'], ['lender', 'Lender', 'text'], ['interestRate', 'Interest Rate (% / year)', 'num'], ['buyClosingCosts', 'Buying Closing Costs', 'num'],
     ['rehabBudget', 'Rehab Budget', 'num'], ['rehabSpent', 'Rehab Spent', 'num'], ['holdingCosts', 'Holding Costs', 'num'], ['sellingCosts', 'Selling Costs', 'num'],
-    ['otherCosts', 'Other Costs', 'num'], ['otherCostsLabel', 'Other Costs Label', 'text'], ['adjustments', 'Credits (Reduce Cost)', 'num'], ['adjustmentsLabel', 'Credits Label', 'text'],
+    ['adjustments', 'Credits (Reduce Cost)', 'num'], ['adjustmentsLabel', 'Credits Label', 'text'],
     ['salePrice', 'Sale Price (Or Projected)', 'num'], ['datesNote', 'Date Notes', 'text'], ['notes', 'Property Notes', 'area']];
-  var HOLD_FIELDS = [['address', 'Property Address', 'text'], ['city', 'City, State Zip', 'text'], ['purchaseDate', 'Purchase Close Date', 'date'], ['saleDate', 'Sale Close Date (If Sold)', 'date'],
+  var HOLD_FIELDS = [['address', 'Property Address', 'text'], ['city', 'City, State Zip', 'text'], ['purchaseDate', 'Purchase Close Date', 'date'], ['rentalStart', 'Rented Since', 'date'], ['saleDate', 'Sale Close Date (If Sold)', 'date'],
     ['purchasePrice', 'Purchase Price', 'num'], ['buyClosingCosts', 'Closing Costs', 'num'], ['loanAmount', 'Original Loan', 'num'], ['lender', 'Lender', 'text'], ['interestRate', 'Interest Rate (% / year)', 'num'], ['loanBalance', 'Current Loan Balance', 'num'],
     ['rehabBudget', 'Improvements Budget', 'num'], ['rehabSpent', 'Improvements Spent', 'num'], ['currentValue', 'Current Value', 'num'],
     ['monthlyIncome', 'Monthly Income (Rent)', 'num'], ['monthlyExpenses', 'Monthly Expenses', 'num'], ['salePrice', 'Sale Price (If Sold)', 'num'], ['datesNote', 'Date Notes', 'text'], ['notes', 'Property Notes', 'area']];
@@ -1191,10 +1191,13 @@
       ln('Purchase Price', money(f.purchasePrice)) + ln('Closing Costs', money(f.buyClosingCosts), '', { close: 'Buying' }) + ln('Improvements Spent', money(f.rehabSpent), '', { lock: 'Total of this property’s improvement expense entries — locked' }) + ln('All-In Cost', money(x.allIn), 'tot', { lock: 'Purchase price + closing costs + improvements and other costs — locked' }) +
       ln('Original Loan' + (f.lender ? ' · ' + esc(f.lender) : ''), money(f.loanAmount)) + (f.interestRate ? ln('Interest Rate', (Number(f.interestRate) || 0).toFixed(3).replace(/\.?0+$/, '') + '%') : '') + ln('Current Loan Balance', money(x.loanBalance)) + ln('Cash Invested', money(x.cashInvested), 'tot', { lock: 'Cash put into this property — locked' }) +
       ln('Current Value', x.value ? money(x.value) : '<span class="pill warn">Needs Value</span>') + ln('Equity', sMoney(x.equity), 'tot', { lock: 'Current value minus loan balance — locked' }) +
-      ln('Monthly Rent', x.rent ? money(x.rent) : '<span class="pill warn">Needs Data</span>') + ln('Monthly Expenses', x.expenses ? money(x.expenses) : '<span class="pill warn">Needs Data</span>') + ln('Monthly Cash Flow', x.hasIncome ? sMoney(x.monthlyCashFlow) : '<span class="pill warn">Needs Data</span>', 'tot', { lock: 'Rent minus monthly expenses — locked' }) + (x.hasIncome ? ln('Annual NOI (No Mortgage)', sMoney(x.noi), 'tot', { lock: 'Monthly cash flow × 12 — locked' }) : '') + (depositsHeld(f) ? ln('Security Deposits Held (Owed To Tenants)', money(depositsHeld(f))) : '') + '</div></div>' +
+      ln('Monthly Rent', x.rent ? money(x.rent) : '<span class="pill warn">Needs Data</span>') + ln('Monthly Expenses', x.expenses ? money(x.expenses) : '<span class="pill warn">Needs Data</span>') + ln('Monthly Cash Flow', x.hasIncome ? sMoney(x.monthlyCashFlow) : '<span class="pill warn">Needs Data</span>', 'tot', { lock: 'Rent minus monthly expenses — locked' }) + (x.hasIncome ? ln('Annual NOI (No Mortgage)', sMoney(x.noi), 'tot', { lock: 'Monthly cash flow × 12 — locked' }) : '') +
+        ln('Rented Since', fmtDate(f.rentalStart || f.purchaseDate) || '<span class="pill warn">Needs Date</span>') + ln('Months Rented', x.monthsRented == null ? '—' : String(x.monthsRented), '', { lock: 'Whole months from the rented-since date — locked' }) +
+        (x.hasIncome ? ln('Rent Collected To Date', money(x.rentToDate), '', { lock: 'Monthly rent × months rented — locked' }) + ln('Cash Flow To Date', sMoney(x.cashFlowToDate), 'tot', { lock: 'Monthly cash flow × months rented — locked' }) : '') +
+        (depositsHeld(f) ? ln('Security Deposits Held (Owed To Tenants)', money(depositsHeld(f))) : '') + '</div></div>' +
       '<div class="card rule"><h2>Return</h2><div style="display:flex;justify-content:center;gap:18px;margin-top:10px">' +
       donut(x.equityRoi || 0, 1, pct(x.equityRoi, 0), 'Equity Gain', x.equityRoi == null ? 'gold' : (x.equityRoi >= 0 ? 'good' : 'bad')) + donut(x.cashOnCash || 0, 0.2, x.hasIncome ? pct(x.cashOnCash, 1) : '—', 'Cash-On-Cash', 'gold') + '</div>' +
-      '<hr class="sep"><div class="mini"><div>Purchased' + info(f.datesNote || '', 'h:Dates') + '<b>' + (fmtDate(f.purchaseDate) || '<span class="pill warn">Needs Date</span>') + '</b></div><div>Months Held' + lock('Calculated from the purchase date — locked') + '<b>' + (x.monthsHeld == null ? '—' : x.monthsHeld) + '</b></div><div>Value Vs All-In' + lock('Current value minus all-in cost — locked') + '<b>' + sMoney(x.value ? x.value - x.allIn : 0, 0) + '</b></div></div></div></div>';
+      '<hr class="sep"><div class="mini"><div>Purchased' + info(f.datesNote || '', 'h:Dates') + '<b>' + (fmtDate(f.purchaseDate) || '<span class="pill warn">Needs Date</span>') + '</b></div><div>Rented Since<b>' + (fmtDate(f.rentalStart) || fmtDate(f.purchaseDate) || '—') + '</b></div><div>Months Held' + lock('Calculated from the purchase date — locked') + '<b>' + (x.monthsHeld == null ? '—' : x.monthsHeld) + '</b></div><div>Months Rented' + lock('Whole months from the rented-since date — locked') + '<b>' + (x.monthsRented == null ? '—' : x.monthsRented) + '</b></div><div>Value Vs All-In' + lock('Current value minus all-in cost — locked') + '<b>' + sMoney(x.value ? x.value - x.allIn : 0, 0) + '</b></div></div></div></div>';
     if (isOwner()) html += '<div class="label">Expenses</div><div id="proex"></div>';
     html += '<div class="label">Inventory Needs List</div><div id="invlist"></div>';
     html += '<div class="label">Internal Notes</div><div id="tnotes"></div>';

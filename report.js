@@ -141,7 +141,7 @@
     R.section(p.title || 'Purchase To Payout');
     var blk = function (title, rows, tot) { if (!rows || !rows.length) return; R.table([title, ''], rows.map(function (r) { return [r[0], { content: money(r[1]), styles: { halign: 'right', fontStyle: 'bold' } }]; }).concat(tot ? [[{ content: tot[0], styles: { fontStyle: 'bold', textColor: BLACK } }, { content: money(tot[1]), styles: { halign: 'right', fontStyle: 'bold', textColor: BLACK } }]] : []), { columnStyles: { 1: { cellWidth: 150 } } }); };
     blk('At Purchase', p.purchase, p.purchaseTotal); blk('Cash Invested By Partner', p.capital, p.capitalTotal);
-    blk(p.saleLabel || 'At Sale Closing', p.sale, p.saleTotal); blk(p.paidLabel || 'Paid Out To', p.paid, p.paidTotal);
+    blk(p.saleLabel || 'At Sale Closing', p.sale, p.saleNet); blk(p.paidLabel || 'Paid Out To', p.paid, p.paidTotal);
   }
 
   function flip(d) {
@@ -173,7 +173,7 @@
       ['Current Value', x.value ? money(x.value) : 'Needs value'], ['Equity', money(x.equity), true], ['Monthly Rent', x.rent ? money(x.rent) : 'Needs data'], ['Monthly Expenses', x.expenses ? money(x.expenses) : 'Needs data'], ['Monthly Cash Flow', x.hasIncome ? money(x.monthlyCashFlow) : 'Needs data', true]];
     if (x.hasIncome) rows.push(['Annual NOI (No Mortgage)', money(x.noi), true]);
     R.lines(rows);
-    R.note('Purchased ' + (fdate(f.purchaseDate) || '(needs date)') + (x.monthsHeld != null ? ' · ' + x.monthsHeld + ' months held' : ''));
+    R.note('Purchased ' + (fdate(f.purchaseDate) || '(needs date)') + (f.rentalStart ? ' · Rented since ' + fdate(f.rentalStart) : '') + (x.monthsHeld != null ? ' · ' + x.monthsHeld + ' months held' : '') + (x.monthsRented != null ? ' · ' + x.monthsRented + ' months rented' : '') + (x.hasIncome && x.rentToDate ? ' · Rent collected to date ' + money(x.rentToDate) : ''));
     expensesSection(R, d.expenses);
 
     return R.finish();
