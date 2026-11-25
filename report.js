@@ -173,8 +173,30 @@
       ['Original Loan' + (f.lender ? ' · ' + f.lender : ''), money(f.loanAmount)], ['Current Loan Balance', money(x.loanBalance)], ['Cash Invested', money(x.cashInvested), true],
       ['Current Value', x.value ? money(x.value) : 'Needs value'], ['Equity', money(x.equity), true], ['Monthly Rent', x.rent ? money(x.rent) : 'Needs data'], ['Monthly Expenses', x.expenses ? money(x.expenses) : 'Needs data'], ['Monthly Cash Flow', x.hasIncome ? money(x.monthlyCashFlow) : 'Needs data', true]];
     if (x.hasIncome) rows.push(['Annual NOI (No Mortgage)', money(x.noi), true]);
+    rows.push(['Rented Since', fdate(f.rentalStart || f.purchaseDate) || 'Needs date']);
     R.lines(rows);
-    R.note('Purchased ' + (fdate(f.purchaseDate) || '(needs date)') + (f.rentalStart ? ' · Rented since ' + fdate(f.rentalStart) : '') + (x.monthsHeld != null ? ' · ' + x.monthsHeld + ' months held' : '') + (x.monthsRented != null ? ' · ' + x.monthsRented + ' months rented' : '') + (x.hasIncome && x.rentToDate ? ' · Rent collected to date ' + money(x.rentToDate) : ''));
+    var ty = d.taxYears, ytd = ty && ty.ytd, hist = ty && ty.history || [];
+    if (ytd) {
+      var yrows = [['Months Rented', String(ytd.monthsRented)], ['Rent Collected', money(ytd.rent)], ['Expenses Paid', money(ytd.expenses)]];
+      Object.keys(ytd.byCategory || {}).sort().forEach(function (k) { yrows.push(['  ' + k, money(ytd.byCategory[k])]); });
+      yrows.push(['Net Cash Flow', money(ytd.net), true]);
+      if (ytd.capital) yrows.push(['Improvements / Purchase Costs (Not In Net)', money(ytd.capital)]);
+      R.section(ytd.year + ' YTD');
+      R.lines(yrows);
+    }
+    if (x.hasIncome) {
+      R.section('Since Rented');
+      R.lines([['Months Rented', x.monthsRented == null ? '-' : String(x.monthsRented)], ['Rent Collected', money(x.rentToDate)], ['Cash Flow (monthly rent and expenses)', money(x.cashFlowToDate), true]]);
+    }
+    hist.forEach(function (yr) {
+      var hrows = [['Months Rented', String(yr.monthsRented)], ['Rent Collected', money(yr.rent)], ['Expenses Paid', money(yr.expenses)]];
+      Object.keys(yr.byCategory || {}).sort().forEach(function (k) { hrows.push(['  ' + k, money(yr.byCategory[k])]); });
+      hrows.push(['Net Cash Flow', money(yr.net), true]);
+      if (yr.capital) hrows.push(['Improvements / Purchase Costs (Not In Net)', money(yr.capital)]);
+      R.section('Tax Year ' + yr.year);
+      R.lines(hrows);
+    });
+    R.note('Purchased ' + (fdate(f.purchaseDate) || '(needs date)') + (f.rentalStart ? ' · Rented since ' + fdate(f.rentalStart) : '') + (x.monthsHeld != null ? ' · ' + x.monthsHeld + ' months held' : '') + (x.monthsRented != null ? ' · ' + x.monthsRented + ' months rented' : '') + (x.hasIncome && x.rentToDate ? ' · Rent collected since rented ' + money(x.rentToDate) : '') + '. YTD and tax-year expenses are dated Operating and Holding entries. Security deposits are a liability, not income.');
     expensesSection(R, d.expenses);
 
     return R.finish();

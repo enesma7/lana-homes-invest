@@ -323,6 +323,83 @@
       totalRoi: cash > 0 && value > 0 ? (equity - cash + (hasIncome ? cf * 12 : 0)) / cash : null, noi: r2(hasIncome ? cf * 12 : 0), cashFlowToDate: r2(cfToDate), rentToDate: r2(rentToDate), monthsHeld: months, daysHeld: days, monthsRented: monthsRented, daysRented: daysRented, rentalStart: rentStart || '' };
   }
 
-  var api = { splitsOf: splitsOf, ledgerSum: ledgerSum, payerMatches: ledgerPayerMatches, estimate: estimate, flip: flip, holding: holding, live: ledgerLive, ledger: ledger, ledgers: ledgers, phaseOf: ledgerPhase, atSaleOf: ledgerAtSale, payerOf: ledgerPayer, PHASES: LEDGER_PHASES, DEAL_PHASES: LEDGER_DEAL, daysBetween: daysBetween, annualize: annualize, n: n, downPayment: downPayment, cashToPurchase: cashToPurchase, parseOverrides: parseOverrides, applyOverrides: applyOverrides };
+  /** Whole months between two inclusive calendar dates, same 30.4375-day month as holding(). */
+  function monthsBetween(start, end) {
+    if (!start || !end || end < start) return 0;
+    return Math.max(0, Math.floor(daysBetween(start, end) / 30.4375));
+  }
+  /**
+   * Calendar-year rental / tax figures for a holding, derived from rentalStart, monthly rent,
+   * and dated expense rows. Does not change equity, monthly cash flow, cash-on-cash, or payouts.
+   * Rental expenses = Operating + Holding rows dated in that year (not Purchase Cash, Rehab, or Buying).
+   * Those capital rows are totaled separately and are not subtracted from net cash flow.
+   * Security deposits are never included. A year is "closed" after Dec 31 (or the sale date).
+   */
+  function holdingTaxYears(h, expenses, today) {
+    today = today || new Date().toISOString().slice(0, 10);
+    var rentStart = h && (h.rentalStart || h.purchaseDate) || '';
+    var saleEnd = h && h.status === 'Sold' && h.saleDate ? h.saleDate : '';
+    var inc = n(h && h.monthlyIncome);
+    var purchaseY = h && h.purchaseDate ? h.purchaseDate.slice(0, 4) : '';
+    var startY = rentStart ? +rentStart.slice(0, 4) : (purchaseY ? +purchaseY : +today.slice(0, 4));
+    var endY = +today.slice(0, 4);
+    if (saleEnd) endY = Math.min(endY, +saleEnd.slice(0, 4));
+    var years = {}, y;
+    function ensure(yy) {
+      var k = String(yy);
+      if (!years[k]) years[k] = { year: k, monthsRented: 0, rent: 0, expenses: 0, net: 0, byCategory: {}, capital: 0, capitalByCategory: {}, rows: [], capitalRows: [], from: '', to: '', closed: false };
+      return years[k];
+    }
+    for (y = startY; y <= endY; y++) {
+      var rec = ensure(y), from = y + '-01-01', last = y + '-12-31';
+      if (rentStart && rentStart > from) from = rentStart;
+      if (saleEnd && saleEnd < last) last = saleEnd;
+      rec.closed = today > (y + '-12-31') || !!(saleEnd && saleEnd <= (y + '-12-31') && saleEnd >= (y + '-01-01'));
+      rec.from = from;
+      rec.to = (rec.closed ? last : (today < last ? today : last));
+      if (rentStart && rec.to >= from) {
+        rec.monthsRented = monthsBetween(from, rec.to);
+        rec.rent = r2(inc * rec.monthsRented);
+      }
+    }
+    (expenses || []).forEach(function (e) {
+      if (!e || String(e.deleted) === '1') return;
+      var d = String(e.date || ''), yy = /^\d{4}/.test(d) ? d.slice(0, 4) : '';
+      if (!yy) return;
+      if (+yy < startY - 1 || +yy > endY) return;
+      var rec = ensure(yy), ph = ledgerPhase(e), a = ledgerNum(e.amount), cat = String(e.category || 'Other') || 'Other';
+      if (ph === 'Purchase Cash') return;
+      if (ph === 'Operating' || ph === 'Holding') {
+        rec.expenses = r2(rec.expenses + a);
+        rec.byCategory[cat] = r2((rec.byCategory[cat] || 0) + a);
+        rec.rows.push(e);
+      } else if (ph === 'Buying' || ph === 'Rehab') {
+        rec.capital = r2(rec.capital + a);
+        rec.capitalByCategory[cat] = r2((rec.capitalByCategory[cat] || 0) + a);
+        rec.capitalRows.push(e);
+      }
+    });
+    var list = Object.keys(years).sort().map(function (k) {
+      var t = years[k];
+      t.net = r2(t.rent - t.expenses);
+      t.rows.sort(function (a, b) { return String(a.date || '') < String(b.date || '') ? -1 : 1; });
+      t.capitalRows.sort(function (a, b) { return String(a.date || '') < String(b.date || '') ? -1 : 1; });
+      return t;
+    });
+    var currentYear = String(endY);
+    var ytd = null;
+    for (y = 0; y < list.length; y++) if (list[y].year === currentYear && !list[y].closed) ytd = list[y];
+    var history = list.filter(function (t) { return t.closed; });
+    var lifeEnd = saleEnd && saleEnd < today ? saleEnd : today;
+    var lifeMonths = rentStart ? monthsBetween(rentStart, lifeEnd) : 0;
+    var lifeExp = 0, lifeCap = 0;
+    list.forEach(function (t) { lifeExp = r2(lifeExp + t.expenses); lifeCap = r2(lifeCap + t.capital); });
+    return {
+      currentYear: currentYear, ytd: ytd, history: history, years: list, rentStart: rentStart,
+      sinceRented: { monthsRented: lifeMonths, rent: r2(inc * lifeMonths), expenses: lifeExp, net: r2(inc * lifeMonths - lifeExp), capital: lifeCap }
+    };
+  }
+
+  var api = { splitsOf: splitsOf, ledgerSum: ledgerSum, payerMatches: ledgerPayerMatches, estimate: estimate, flip: flip, holding: holding, holdingTaxYears: holdingTaxYears, live: ledgerLive, ledger: ledger, ledgers: ledgers, phaseOf: ledgerPhase, atSaleOf: ledgerAtSale, payerOf: ledgerPayer, PHASES: LEDGER_PHASES, DEAL_PHASES: LEDGER_DEAL, daysBetween: daysBetween, monthsBetween: monthsBetween, annualize: annualize, n: n, downPayment: downPayment, cashToPurchase: cashToPurchase, parseOverrides: parseOverrides, applyOverrides: applyOverrides };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.FlipCalc = api;
 })(this);
