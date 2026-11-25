@@ -170,7 +170,7 @@
   /** Owner-typed values (Edit Numbers → Override) win over the live expense totals for that field only. */
   function applyOverrides(g) {
     var o = parseOverrides(g), k, keys = ['buyClosingCosts', 'rehabSpent', 'holdingCosts', 'sellingCosts', 'otherCosts',
-      'purchasePrice', 'loanAmount', 'salePrice', 'rehabBudget', 'adjustments', 'currentValue', 'loanBalance', 'monthlyIncome', 'monthlyExpenses', 'cashInvested'];
+      'purchasePrice', 'loanAmount', 'salePrice', 'rehabBudget', 'adjustments', 'purchaseCredits', 'currentValue', 'loanBalance', 'monthlyIncome', 'monthlyExpenses', 'cashInvested'];
     for (var i = 0; i < keys.length; i++) {
       k = keys[i];
       if (o.hasOwnProperty(k) && o[k] !== '' && o[k] != null) g[k] = ledgerR2(ledgerNum(o[k]));
@@ -180,6 +180,28 @@
   /** Down payment is the price not funded by the loan. Cash to purchase = that down payment + buying closing costs. */
   function downPayment(f) { return ledgerR2(ledgerNum(f && f.purchasePrice) - ledgerNum(f && f.loanAmount)); }
   function cashToPurchase(f) { return ledgerR2(downPayment(f) + ledgerNum(f && f.buyClosingCosts)); }
+  /** After-sale costs not paid through the sale escrow. Already in profit (otherCosts); also deducted from Net Proceeds so the two totals tie. */
+  function afterSaleNotAtSale(L) {
+    if (!L) return 0;
+    var at = 0;
+    (L.atSale || []).forEach(function (a) { if (a && a.phase === 'After Sale') at += ledgerNum(a.amount); });
+    return ledgerR2(ledgerNum(L.after) - at);
+  }
+  /**
+   * Purchase-side credits (escrow credits, seller credits at purchase) belong in profit / cash-in, not in sale Net Proceeds.
+   * Prefer the structured purchaseCredits field. If it is empty and purchase-cash entries exist, infer the shortfall
+   * of recorded purchase cash vs the down payment — that shortfall is the credit already reflected in cash in.
+   * When purchaseCredits is set, adjustments should not also include the same amount (Reis was migrated that way).
+   */
+  function purchaseCreditsOf(f, L) {
+    var v = ledgerR2(ledgerNum(f && f.purchaseCredits));
+    if (v) return v;
+    if (L && L.purchasePaid && Object.keys(L.purchasePaid).length) {
+      var gap = ledgerR2(downPayment(f) - ledgerNum(L.purchase));
+      if (gap > 0) return gap;
+    }
+    return 0;
+  }
   function ledgerPayerMatches(payer, name) { payer = String(payer || '').toLowerCase(); name = String(name || '').toLowerCase().trim(); return !!name && (payer === name || payer.indexOf(name + ' ') === 0 || payer.indexOf(name + '(') === 0); }
   function ledgerSetupRow(x) { return x && (x.payout || x.meta); }
   /** Apply a property's expense ledger: cost buckets, capital per partner and cash in all come from the entries.
@@ -239,7 +261,14 @@
     var lab = { 'Buying': 'Buying Costs Paid At Sale', 'Rehab': 'Rehab Paid From Escrow', 'Holding': 'Holding Costs Paid At Sale', 'Selling': 'Selling Costs Through Escrow', 'After Sale': 'Held Back After Sale' };
     order.forEach(function (p) { saleRows.push([lab[p], -r2(groups[p])]); });
     if (adj) saleRows.push([f.adjustmentsLabel || 'Credits', adj]);
-    var net = r2(sale - loan - L.atSaleTotal + adj), toPartners = r2(capTotal + x.profit), diff = r2(toPartners - net);
+    var afterOpen = afterSaleNotAtSale(L);
+    var pc = r2(n(f.purchaseCredits));
+    // If the structured field is set, those credits were moved out of adjustments and are already not in `adj`.
+    // If it is empty, any inferred purchase-side credit is still sitting inside adjustments and must be excluded from net.
+    var exclude = pc ? 0 : purchaseCreditsOf(f, L);
+    if (afterOpen) saleRows.push([f.otherCostsLabel || 'Costs After Closing', -afterOpen, 'After-sale costs not paid through the sale escrow']);
+    if (exclude) saleRows.push(['Purchase Credits (Already In Cash In)', -exclude, 'Purchase-side credits reduced cash to purchase and are not added to sale Net Proceeds']);
+    var net = r2(sale - loan - L.atSaleTotal + adj - afterOpen - exclude), toPartners = r2(capTotal + x.profit), diff = r2(toPartners - net);
     if (Math.abs(diff) >= 0.01) saleRows.push(['Settled Outside The Sale Escrow', diff, 'Costs in the totals not paid by a partner or the sale escrow']);
     var paid = inv.map(function (i) {
       return [i.name, i.distribution, 'Capital ' + fmt(i.capital) + (i.profitShare < 0 ? ' − ' + fmt(-i.profitShare) + ' loss' : ' + ' + fmt(i.profitShare) + ' profit') + ' (' + pct(i.split) + ')'];
@@ -273,7 +302,7 @@
   /** A saved flip's numbers → totals, ROI, hold, investor distributions. Pass a flip through live() first when it has a ledger. */
   function flip(f, today) {
     if (f && f.ledger && !f._liveApplied) { f = ledgerLive(f); f._liveApplied = true; }
-    var totalCost = n(f.purchasePrice) + n(f.buyClosingCosts) + n(f.rehabSpent) + n(f.holdingCosts) + n(f.sellingCosts) + n(f.otherCosts) - n(f.adjustments);
+    var totalCost = n(f.purchasePrice) + n(f.buyClosingCosts) + n(f.rehabSpent) + n(f.holdingCosts) + n(f.sellingCosts) + n(f.otherCosts) - n(f.adjustments) - n(f.purchaseCredits);
     var profit = n(f.salePrice) - totalCost;
     var cash = n(f.cashInvested);
     var roiCash = cash > 0 ? profit / cash : null;
@@ -511,6 +540,6 @@
     };
   }
 
-  var api = { splitsOf: splitsOf, ledgerSum: ledgerSum, payerMatches: ledgerPayerMatches, estimate: estimate, flip: flip, holding: holding, holdingTaxYears: holdingTaxYears, holdingClassOf: holdingClassOf, unitsOf: unitsOf, depositsOf: depositsOf, earliestStart: earliestStart, monthlyRentOf: monthlyRentOf, live: ledgerLive, ledger: ledger, ledgers: ledgers, phaseOf: ledgerPhase, atSaleOf: ledgerAtSale, payerOf: ledgerPayer, PHASES: LEDGER_PHASES, DEAL_PHASES: LEDGER_DEAL, daysBetween: daysBetween, monthsBetween: monthsBetween, annualize: annualize, n: n, downPayment: downPayment, cashToPurchase: cashToPurchase, parseOverrides: parseOverrides, applyOverrides: applyOverrides };
+  var api = { splitsOf: splitsOf, ledgerSum: ledgerSum, payerMatches: ledgerPayerMatches, estimate: estimate, flip: flip, holding: holding, holdingTaxYears: holdingTaxYears, holdingClassOf: holdingClassOf, unitsOf: unitsOf, depositsOf: depositsOf, earliestStart: earliestStart, monthlyRentOf: monthlyRentOf, live: ledgerLive, ledger: ledger, ledgers: ledgers, phaseOf: ledgerPhase, atSaleOf: ledgerAtSale, payerOf: ledgerPayer, PHASES: LEDGER_PHASES, DEAL_PHASES: LEDGER_DEAL, daysBetween: daysBetween, monthsBetween: monthsBetween, annualize: annualize, n: n, downPayment: downPayment, cashToPurchase: cashToPurchase, afterSaleNotAtSale: afterSaleNotAtSale, purchaseCreditsOf: purchaseCreditsOf, parseOverrides: parseOverrides, applyOverrides: applyOverrides };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.FlipCalc = api;
 })(this);

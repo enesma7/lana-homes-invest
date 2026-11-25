@@ -549,6 +549,7 @@
         ln('Buying Closing Costs', money(f.buyClosingCosts), '', { close: 'Buying' }) + ln('Rehab Spent', money(f.rehabSpent), '', { lock: 'Total of this property’s Rehab expense entries — locked' }) + ln('Holding Costs (Interest, Taxes, Insurance)', money(f.holdingCosts), '', { lock: 'Total of this property’s Holding expense entries — locked' }) +
         ln('Selling Costs', money(f.sellingCosts), '', { close: 'Selling' }) + (f.otherCosts ? ln(esc(f.otherCostsLabel || 'Other Costs'), money(f.otherCosts), '', { lock: 'Total of After-Sale expense entries — locked' }) : '') +
         (f.adjustments ? ln(esc(f.adjustmentsLabel || 'Credits'), '<span class="pos">' + money(f.adjustments) + '</span>') : '') +
+        (f.purchaseCredits ? ln('Purchase Credits' + lock('Purchase-side credits (for example escrow credits at purchase). They reduce total cost and cash in. They are not added to sale Net Proceeds.'), '<span class="pos">' + money(f.purchaseCredits) + '</span>') : '') +
         ln('Total Cost', money(x.totalCost), 'tot', { lock: 'Sum of price and costs minus credits — locked' }) + ln(sold ? 'Sale Price' : 'Projected Sale Price', money(f.salePrice), 'tot') + ln(sold ? 'Profit' : 'Projected Profit', sMoney(x.profit), 'tot', { lock: 'Sale price minus total cost — locked' }) + '</div></div>';
       html += '<div class="card rule"><h2>Rehab Budget Vs Spent</h2><p class="meta">' + money(f.rehabSpent, 0) + ' of ' + money(f.rehabBudget, 0) + '</p><div class="bar" style="margin:10px 0 6px"><i class="' + (budgetPct > 1 ? 'over' : '') + '" style="width:' + Math.min(100, budgetPct * 100).toFixed(1) + '%"></i></div>' +
         '<p class="sub2">' + (x.rehabVariance > 0 ? '<span class="neg">' + money(x.rehabVariance) + '</span> over budget' : x.rehabVariance < 0 ? '<span class="pos">' + money(-x.rehabVariance) + '</span> under budget' : 'On budget') + '</p>' +
@@ -663,6 +664,7 @@
     ['purchasePrice', 'Purchase Price', 'num'], ['loanAmount', 'Loan Amount', 'num'], ['lender', 'Lender', 'text'], ['interestRate', 'Interest Rate (% / year)', 'num'], ['buyClosingCosts', 'Buying Closing Costs', 'num'],
     ['rehabBudget', 'Rehab Budget', 'num'], ['rehabSpent', 'Rehab Spent', 'num'], ['holdingCosts', 'Holding Costs', 'num'], ['sellingCosts', 'Selling Costs', 'num'],
     ['adjustments', 'Credits (Reduce Cost)', 'num'], ['adjustmentsLabel', 'Credits Label', 'text'],
+    ['purchaseCredits', 'Purchase Credits (Reduce Cost; Not In Net Proceeds)', 'num'],
     ['salePrice', 'Sale Price (Or Projected)', 'num'], ['datesNote', 'Date Notes', 'text'], ['notes', 'Property Notes', 'area']];
   var HOLD_FIELDS = [['address', 'Property Address', 'text'], ['city', 'City, State Zip', 'text'], ['purchaseDate', 'Purchase Close Date', 'date'], ['rentalStart', 'Rented Since', 'date'], ['saleDate', 'Sale Close Date (If Sold)', 'date'],
     ['purchasePrice', 'Purchase Price', 'num'], ['buyClosingCosts', 'Closing Costs', 'num'], ['loanAmount', 'Original Loan', 'num'], ['lender', 'Lender', 'text'], ['interestRate', 'Interest Rate (% / year)', 'num'], ['loanBalance', 'Current Loan Balance', 'num'],

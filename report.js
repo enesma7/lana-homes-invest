@@ -154,6 +154,7 @@
     var rows = [['Purchase Price', money(f.purchasePrice)], ['Loan' + (f.lender ? ' · ' + f.lender : ''), money(f.loanAmount)], ['Buying Closing Costs', money(f.buyClosingCosts)], ['Rehab Spent (Budget ' + money(f.rehabBudget, 0) + ')', money(f.rehabSpent)], ['Holding Costs (Interest, Taxes, Insurance)', money(f.holdingCosts)], ['Selling Costs', money(f.sellingCosts)]];
     if (n(f.otherCosts)) rows.push([f.otherCostsLabel || 'Other Costs', money(f.otherCosts)]);
     if (n(f.adjustments)) rows.push([f.adjustmentsLabel || 'Credits', '-' + money(f.adjustments)]);
+    if (n(f.purchaseCredits)) rows.push(['Purchase Credits', '-' + money(f.purchaseCredits)]);
     rows.push(['Total Cost', money(x.totalCost), true], [sold ? 'Sale Price' : 'Projected Sale Price', money(f.salePrice), true], [sold ? 'Profit' : 'Projected Profit', money(x.profit), true, x.profit < 0 ? 'bad' : '']);
     R.lines(rows);
     R.note('Purchased ' + (fdate(f.purchaseDate) || '(needs date)') + (sold ? ' · Sold ' + (fdate(f.saleDate) || '(needs date)') : '') + '');
