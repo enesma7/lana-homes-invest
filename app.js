@@ -559,6 +559,7 @@
       if (x.payout) html += payoutCard(x.payout);
       if (own) html += '<div class="label">Expenses</div><div id="proex"></div>';
       html += '<div class="label">Inventory Needs List</div><div id="invlist"></div>';
+      html += '<div class="label">Documents</div><div id="tdocs"></div>';
       html += '<div class="label">Internal Notes</div><div id="tnotes"></div>';
       if (f.access) {
         html += '<div class="label">Who Can See This Flip</div><div class="card tblwrap"><table class="t"><thead><tr><th>User</th><th>Role</th><th>Invited</th><th>Last Sign-In</th><th></th></tr></thead><tbody>' +
@@ -570,7 +571,7 @@
       }
       if (f.estimates && f.estimates.length) html += '<div class="label">Estimates Tied To This Flip</div>' + estTable(f.estimates);
       $app.innerHTML = html; animate();
-      renderInventory('flip', f.id, f.inventory || [], can); propExpenses(f); renderTNotes(f);
+      renderInventory('flip', f.id, f.inventory || [], can); propExpenses(f); renderDocuments(f); renderTNotes(f);
       var st = document.getElementById('st');
       if (st) st.onchange = function () {
         var s = st.value;
@@ -604,6 +605,46 @@
       bindEstRows();
       runAfterFlipRender(f);
     }).catch(function (e) { afterFlipRender = null; $app.innerHTML = '<p class="empty">' + esc(e.message) + '</p>'; });
+  }
+
+
+  function renderDocuments(f) {
+    var host = document.getElementById('tdocs'); if (!host) return;
+    if (!Array.isArray(f.documents)) { host.innerHTML = '<div class="card"><p class="empty">Documents turn on with the backend update (1.5.0).</p></div>'; return; }
+    var list = f.documents.slice().sort(function (a, b) { return String(a.uploadedAt || '') < String(b.uploadedAt || '') ? 1 : -1; });
+    var rows = list.length ? list.map(function (d) {
+      var when = d.uploadedAt ? new Date(d.uploadedAt).toLocaleString() : '';
+      var who = d.uploadedByName || 'User';
+      return '<div class="docrow">' +
+        '<div class="docmeta"><div class="doctitle">' + esc(d.name || 'Document') + '</div><div class="meta mnote">' + esc(who) + (when ? ' · ' + esc(when) : '') + '</div></div>' +
+        '<div class="docacts">' +
+          (d.url ? '<a class="btn sm" href="' + esc(d.url) + '" target="_blank" rel="noopener">Open</a>' : '') +
+          (d.downloadUrl ? '<a class="btn sm" href="' + esc(d.downloadUrl) + '" target="_blank" rel="noopener" download>Download</a>' : '') +
+          (d.canDelete ? '<button type="button" class="btn sm danger" data-dd="' + esc(d.id) + '">Delete</button>' : '') +
+        '</div></div>';
+    }).join('') : '<p class="empty">No documents yet. Upload a PDF, JPG or PNG.</p>';
+    host.innerHTML = '<div class="card">' + rows +
+      '<div class="row" style="margin-top:12px"><button type="button" class="btn sm gold" id="docadd">Upload Document</button>' +
+      '<input type="file" id="docfile" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" hidden></div>' +
+      '<p class="sub2" style="margin:8px 0 0">PDF, JPG or PNG, under 10 MB. Stored in this property’s folder.</p></div>';
+    var reload = function () { api('getFlip', { id: f.id }).then(function (g) { f.documents = g.documents; renderDocuments(f); }).catch(fail); };
+    var pick = document.getElementById('docfile');
+    document.getElementById('docadd').onclick = function () { pick.click(); };
+    pick.onchange = function () {
+      var file = pick.files && pick.files[0]; pick.value = '';
+      if (!file) return;
+      if (file.size > 10 * 1024 * 1024) { fail(new Error('Documents must be under 10 MB.')); return; }
+      var mime = file.type || (/\.pdf$/i.test(file.name) ? 'application/pdf' : (/\.png$/i.test(file.name) ? 'image/png' : 'image/jpeg'));
+      readB64(file).then(function (d) { return api('uploadDocument', { flipId: f.id, name: file.name, mime: mime, data: d }); })
+        .then(function () { toast('Document uploaded.'); reload(); }).catch(fail);
+    };
+    host.querySelectorAll('[data-dd]').forEach(function (b) {
+      b.onclick = function () {
+        confirmBox('Delete Document', '<p>Remove this document from the list? The file stays in Drive.</p>', 'Delete', function () {
+          api('deleteDocument', { id: b.dataset.dd }).then(function () { toast('Document removed.'); reload(); }).catch(fail);
+        });
+      };
+    });
   }
 
   // Internal notes: anyone who can see the property can add notes; only the author or the owner edits or deletes. Never in PDFs.
@@ -1401,10 +1442,11 @@
       (depositsHeld(f) ? '<div class="lines">' + ln('Security Deposits Held (Owed To Tenants)', money(depositsHeld(f)), '', { lock: 'A liability owed back to tenants, not rental income — locked' }) + '</div>' : '') + '</div>';
     if (isOwner()) html += '<div class="label">Expenses</div><div id="proex"></div>';
     html += '<div class="label">Inventory Needs List</div><div id="invlist"></div>';
-    html += '<div class="label">Internal Notes</div><div id="tnotes"></div>';
+    html += '<div class="label">Documents</div><div id="tdocs"></div>';
+      html += '<div class="label">Internal Notes</div><div id="tnotes"></div>';
     if (f.estimates && f.estimates.length) html += '<div class="label">Estimates Tied To This Holding</div>' + estTable(f.estimates);
     $app.innerHTML = html; animate();
-    renderInventory('flip', f.id, f.inventory || [], can); propExpenses(f); renderTNotes(f); fillRentTax(f, x, ln);
+    renderInventory('flip', f.id, f.inventory || [], can); propExpenses(f); renderDocuments(f); renderTNotes(f); fillRentTax(f, x, ln);
     var st = document.getElementById('st');
     if (st) st.onchange = function () { api('setStatus', { id: f.id, status: st.value }).then(function () { toast('Status set to ' + st.value + '.'); expensesChanged(); viewFlip(f.id, { status: st.value }); }).catch(function (e) { fail(e); st.value = f.status; }); };
     bindInvestors(f);

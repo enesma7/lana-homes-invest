@@ -451,3 +451,10 @@ tr.erow:hover td:last-child{background:#FAFAFC}
   .uedit .urow{grid-template-columns:1fr 1fr;align-items:end}
   .uedit .urow button{grid-column:1/-1;justify-self:start}
 }
+
+/* Property documents, above Internal Notes */
+.docrow{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 0;border-bottom:1px solid var(--line)}
+.docrow:last-of-type{border-bottom:1px solid var(--line)}
+.docmeta{min-width:0;flex:1}
+.doctitle{font-weight:700;font-size:14px;color:var(--ink);word-break:break-word}
+.docacts{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
