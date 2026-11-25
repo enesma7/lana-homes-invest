@@ -608,17 +608,24 @@
   }
 
 
-  function renderDocuments(f) {
+  function renderDocuments(f, editingId) {
     var host = document.getElementById('tdocs'); if (!host) return;
     if (!Array.isArray(f.documents)) { host.innerHTML = '<div class="card"><p class="empty">Documents turn on with the backend update (1.5.0).</p></div>'; return; }
     var list = f.documents.slice().sort(function (a, b) { return String(a.uploadedAt || '') < String(b.uploadedAt || '') ? 1 : -1; });
     var rows = list.length ? list.map(function (d) {
       var when = d.uploadedAt ? new Date(d.uploadedAt).toLocaleString() : '';
       var who = d.uploadedByName || 'User';
-      return '<div class="docrow">' +
-        '<div class="docmeta"><div class="doctitle">' + esc(d.name || 'Document') + '</div><div class="meta mnote">' + esc(who) + (when ? ' · ' + esc(when) : '') + '</div></div>' +
+      var editing = editingId && editingId === d.id;
+      var title = d.url
+        ? '<a class="doclink" href="' + esc(d.url) + '" target="_blank" rel="noopener">' + esc(d.name || 'Document') + '</a>'
+        : esc(d.name || 'Document');
+      var meta = editing
+        ? '<div class="docrename"><input id="docname" class="docnamein" type="text" maxlength="160" value="' + esc(d.name || '') + '" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Document name"><div class="docrenacts"><button type="button" class="btn sm gold" id="docsave">Save</button><button type="button" class="btn sm" id="doccancel">Cancel</button></div></div>'
+        : '<div class="doctitle">' + title + '</div><div class="meta mnote">' + esc(who) + (when ? ' · ' + esc(when) : '') + '</div>';
+      return '<div class="docrow' + (editing ? ' editing' : '') + '">' +
+        '<div class="docmeta">' + meta + '</div>' +
         '<div class="docacts">' +
-          (d.url ? '<a class="btn sm" href="' + esc(d.url) + '" target="_blank" rel="noopener">Open</a>' : '') +
+          (!editing && d.canDelete ? '<button type="button" class="btn sm" data-de="' + esc(d.id) + '">Edit</button>' : '') +
           (d.downloadUrl ? '<a class="btn sm" href="' + esc(d.downloadUrl) + '" target="_blank" rel="noopener" download>Download</a>' : '') +
           (d.canDelete ? '<button type="button" class="btn sm danger" data-dd="' + esc(d.id) + '">Delete</button>' : '') +
         '</div></div>';
@@ -626,7 +633,7 @@
     host.innerHTML = '<div class="card">' + rows +
       '<div class="row" style="margin-top:12px"><button type="button" class="btn sm gold" id="docadd">Upload Document</button>' +
       '<input type="file" id="docfile" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" hidden></div>' +
-      '<p class="sub2" style="margin:8px 0 0">PDF, JPG or PNG, under 10 MB. Stored in this property’s folder.</p></div>';
+      '<p class="sub2" style="margin:8px 0 0">PDF, JPG or PNG, under 10 MB. Stored in this property’s folder. Click the name to open.</p></div>';
     var reload = function () { api('getFlip', { id: f.id }).then(function (g) { f.documents = g.documents; renderDocuments(f); }).catch(fail); };
     var pick = document.getElementById('docfile');
     document.getElementById('docadd').onclick = function () { pick.click(); };
@@ -638,6 +645,32 @@
       readB64(file).then(function (d) { return api('uploadDocument', { flipId: f.id, name: file.name, mime: mime, data: d }); })
         .then(function () { toast('Document uploaded.'); reload(); }).catch(fail);
     };
+    host.querySelectorAll('[data-de]').forEach(function (b) {
+      b.onclick = function () { renderDocuments(f, b.dataset.de); };
+    });
+    var cancel = document.getElementById('doccancel');
+    if (cancel) cancel.onclick = function () { renderDocuments(f); };
+    var input = document.getElementById('docname');
+    var save = document.getElementById('docsave');
+    if (input && save) {
+      input.focus();
+      if (input.select) input.select();
+      var saving = false;
+      var doSave = function () {
+        if (saving) return;
+        var name = (input.value || '').replace(/^\s+|\s+$/g, '');
+        if (!name) { fail(new Error('Enter a name.')); return; }
+        saving = true; save.disabled = true;
+        api('renameDocument', { id: editingId, name: name })
+          .then(function () { toast('Document renamed.'); reload(); })
+          .catch(function (e) { saving = false; save.disabled = false; fail(e); });
+      };
+      save.onclick = doSave;
+      input.onkeydown = function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); doSave(); }
+        if (e.key === 'Escape') { e.preventDefault(); renderDocuments(f); }
+      };
+    }
     host.querySelectorAll('[data-dd]').forEach(function (b) {
       b.onclick = function () {
         confirmBox('Delete Document', '<p>Remove this document from the list? The file stays in Drive.</p>', 'Delete', function () {

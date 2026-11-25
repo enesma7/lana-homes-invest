@@ -457,4 +457,16 @@ tr.erow:hover td:last-child{background:#FAFAFC}
 .docrow:last-of-type{border-bottom:1px solid var(--line)}
 .docmeta{min-width:0;flex:1}
 .doctitle{font-weight:700;font-size:14px;color:var(--ink);word-break:break-word}
+a.doclink{color:var(--ink);font-weight:700;text-decoration:underline;text-underline-offset:3px;text-decoration-thickness:1px}
+a.doclink:hover{color:var(--gold2,#b08a3c)}
 .docacts{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.docrename{display:flex;flex-direction:column;gap:8px;width:100%}
+.docnamein{width:100%;min-height:44px;font-size:16px;border:1px solid var(--line2);border-radius:10px;padding:10px 12px;background:#fff;box-sizing:border-box}
+.docnamein:focus{outline:none;border-color:var(--gold2);box-shadow:0 0 0 4px rgba(234,213,158,.35)}
+.docrenacts{display:flex;gap:8px;flex-wrap:wrap}
+@media (max-width:700px){
+  .docrow{align-items:stretch}
+  .docacts{width:100%}
+  .docacts .btn{min-height:44px;flex:1;justify-content:center}
+  .docrenacts .btn{min-height:44px;flex:1;justify-content:center}
+}
