@@ -117,6 +117,7 @@ table.t td.r,table.t th.r{text-align:right}
 .tblwrap table.t{min-width:560px}
 .lines .ln{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px dashed var(--line2);font-size:13.5px}
 .lines .ln span:first-child{color:var(--char)}
+.lines .ln .lnl,.lines .ln span:first-child{display:inline-flex;align-items:center;flex-wrap:wrap;flex:0 1 auto;min-width:0}
 .lines .ln.tot{font-weight:800;border-bottom:none;padding-top:11px}
 .lines .ln.tot span:first-child{color:var(--ink)}
 /* ---------- property cards ---------- */
@@ -355,7 +356,6 @@ input.ro{background:var(--soft);color:var(--char);cursor:default}
 .info::before{content:"";position:absolute;width:30px;height:30px;margin:-8px}
 .info{position:relative}
 #tip{position:fixed;z-index:9999;background:#000007;color:#fff;font-size:12.5px;line-height:1.45;padding:9px 12px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,7,.25);pointer-events:auto;white-space:normal}
-.lines .ln span:first-child{display:inline-flex;align-items:center;flex-wrap:wrap}
 .kpi .k{display:flex;align-items:center}
 .info.add{border-style:dashed;color:#B0B0B6;font:700 11px/1 Inter,Helvetica,Arial,sans-serif}
 #tip .tipedit{display:block;margin-top:8px;padding:4px 10px;border-radius:999px;border:1px solid rgba(255,255,255,.35);background:transparent;color:#EAD59E;font-size:11.5px;font-weight:700;cursor:pointer}
@@ -384,10 +384,6 @@ input.ro{background:var(--soft);color:var(--char);cursor:default}
 
 /* v156: locked calculated totals; sticky Edit column on expense tables */
 .lock{display:inline-flex;align-items:center;margin-left:5px;color:var(--meta);vertical-align:1px;flex:none;cursor:help}
-.lines .ln.locked,.lines .ln.tot{align-items:center}
-.lines .ln.locked .lnl,.lines .ln.tot .lnl{flex:1;min-width:0}
-.lines .ln.locked .lock,.lines .ln.tot .lock{color:var(--meta);flex:none;display:inline-flex}
-.lines .ln.locked .num,.lines .ln.tot .num{flex:none;margin-left:auto}
 
 .lock svg{display:block}
 .tblwrap table.t th:last-child,.tblwrap table.t td:last-child{position:sticky;right:0;background:#fff;box-shadow:-8px 0 10px -8px rgba(0,0,7,.16);z-index:1}

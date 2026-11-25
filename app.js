@@ -629,7 +629,7 @@
     var ln = function (r, cls) {
       var name = String(r[0] || '');
       var lk = cls === 'tot' || /^(Cash To Purchase|Total Cash Invested|Total To Partners|Net Proceeds|Buying Closing Costs)\b/i.test(name);
-      return '<div class="ln' + (cls ? ' ' + cls : '') + (lk ? ' locked' : '') + '"><span class="lnl">' + esc(name) + '</span>' + (lk ? lock('Calculated total — locked') : '') + info(r[2], 'po:' + plain(name)) + '<span class="num">' + (r[1] < 0 ? '<span class="neg">−' + money(-r[1]) + '</span>' : money(r[1])) + '</span></div>';
+      return '<div class="ln' + (cls ? ' ' + cls : '') + (lk ? ' locked' : '') + '"><span class="lnl">' + esc(name) + (lk ? lock('Calculated total — locked') : '') + info(r[2], 'po:' + plain(name)) + '</span><span class="num">' + (r[1] < 0 ? '<span class="neg">−' + money(-r[1]) + '</span>' : money(r[1])) + '</span></div>';
     };
     var block = function (title, rows, tot) { return rows && rows.length ? '<div class="label" style="margin:14px 0 4px">' + esc(title) + '</div><div class="lines">' + rows.map(function (r) { return ln(r); }).join('') + (tot ? ln(tot, 'tot') : '') + '</div>' : ''; };
     return '<div class="label">' + esc(p.title || 'Purchase To Payout') + info(p.source ? 'Source: ' + p.source : '', 'po:Title') + '</div><div class="grid g2"><div class="card rule"><h2>Invested</h2>' +
