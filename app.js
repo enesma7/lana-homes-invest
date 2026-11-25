@@ -402,8 +402,27 @@
       var d = document.getElementById('tdef'); if (d) d.onclick = function () { api('setTip', { flipId: f.id, key: key, reset: true }).then(done).catch(fail); };
     });
   }
-  function tipToggle() { return isOwner() ? '<button class="btn" id="tipm" type="button" title="Add or edit the (i) notes on this page">' + (TIPS && TIPS.edit ? 'Done Editing (i)' : 'Edit (i)') + '</button>' : ''; }
-  function bindTipToggle(f) { var b = document.getElementById('tipm'); if (b) b.onclick = function () { sessionStorage.setItem('fl_tipedit', TIPS.edit ? '' : '1'); viewFlip(f.id); }; }
+  // One Edit button for the owner (and flip admins who can change numbers). While it reads “Done Editing”,
+  // (i) notes are editable and — on a flip or holding — the numbers form (with Remove Property) is open on the page.
+  function tipToggle(opts) {
+    opts = opts || {};
+    var canNotes = isOwner(), canNums = !!opts.can;
+    if (!canNotes && !canNums) return '';
+    var on = !!(TIPS && TIPS.edit);
+    var title = canNotes && canNums ? 'Edit numbers and (i) notes' : canNotes ? 'Add or edit the (i) notes on this page' : 'Edit numbers';
+    return '<button type="button" class="btn" id="tipm" title="' + title + '">' + (on ? 'Done Editing' : 'Edit') + '</button>';
+  }
+  function bindTipToggle(f, opts) {
+    opts = opts || {};
+    var b = document.getElementById('tipm');
+    if (b) b.onclick = function () { sessionStorage.setItem('fl_tipedit', (TIPS && TIPS.edit) ? '' : '1'); viewFlip(f.id); };
+    var panel = document.getElementById('edpanel');
+    if (panel && TIPS && TIPS.edit && opts.can) editFlip(f, null, { host: panel });
+  }
+  function exitEditMode(f) {
+    sessionStorage.setItem('fl_tipedit', '');
+    if (f && f.id) viewFlip(f.id);
+  }
   function kpi(k, v, sub, tone, ring) {
     var body = '<div class="k">' + k + lock('Calculated total — locked') + info(sub, 'kpi:' + plain(k)) + '</div><div class="v">' + v + '</div>';
     if (!ring) return '<div class="card kpi' + (tone ? ' ' + tone : '') + '">' + body + '</div>';
@@ -471,7 +490,7 @@
     getFlipLive(id).then(function (f) {
       if (isHolding(f)) { setMode('holdings'); return renderHolding(f); }
       setMode('flips');
-      TIPS = { f: f, edit: isOwner() && !!sessionStorage.getItem('fl_tipedit') };
+      TIPS = { f: f, edit: !!sessionStorage.getItem('fl_tipedit') && (isOwner() || f.canManage) };
       var x = C.flip(f, todayISO()), sold = f.status === 'Sold', can = f.canManage, own = isOwner();
       markTab(sold ? '#/archive' : '#/flips');
       var ln = function (k, v, cls, opts) {
@@ -483,7 +502,8 @@
       var html = '<p class="meta"><a href="#/' + (sold ? 'archive' : 'flips') + '">← ' + (sold ? 'Archive' : 'Flips') + '</a></p>' +
         '<div class="spread"><div><h1>' + esc(f.address) + '</h1><p class="lead">' + esc(f.city) + info(f.partners || '', 'h:Partners') + '</p></div><div class="row">' +
         (can ? '<select id="st" class="btn" aria-label="Status">' + STATUSES.map(function (s) { return '<option' + (s === f.status ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select>' : '<span class="pill s-' + esc(f.status.replace(/\s/g, '')) + '">' + esc(f.status) + '</span>') +
-        tipToggle() + '<button class="btn" id="pdf" type="button">PDF Report</button>' + (can ? '<button class="btn" id="ed">Edit Numbers</button>' : '') + (can ? '<button class="btn" id="invs">Investors</button>' : '') + (can ? '<button class="btn gold" id="inv">Invite User</button>' : '') + '</div></div>';
+        tipToggle({ can: can }) + '<button class="btn" id="pdf" type="button">PDF Report</button>' + (can ? '<button class="btn" id="invs">Investors</button>' : '') + (can ? '<button class="btn gold" id="inv">Invite User</button>' : '') + '</div></div>';
+      if (TIPS && TIPS.edit && can) html += '<div id="edpanel" class="card rule" style="margin-top:18px"></div>';
       html += '<div class="grid g4" style="margin-top:4px">' +
         kpi(sold ? 'Profit' : 'Projected Profit', sMoney(x.profit, 0), sold ? 'Sale minus every cost' : 'At a ' + money(f.salePrice, 0) + ' sale', x.profit < 0 ? 'bad' : 'good') +
         kpi('Return On Cash', sPct(x.roiCash), 'On ' + money(f.cashInvested, 0) + ' cash in') +
@@ -529,8 +549,7 @@
           });
         } else go();
       };
-      bindPdf(function () { return pdfPropData(f, x); }, 'flip', 'Flip Report', f.address); bindTipToggle(f);
-      var ed = document.getElementById('ed'); if (ed) ed.onclick = function () { editFlip(f); };
+      bindPdf(function () { return pdfPropData(f, x); }, 'flip', 'Flip Report', f.address); bindTipToggle(f, { can: can });
       bindInvestors(f);
       var inv = document.getElementById('inv'); if (inv) inv.onclick = function () { inviteModal(f); };
       document.querySelectorAll('.seg[data-u]').forEach(function (sg) { sg.querySelectorAll('button').forEach(function (b) { b.onclick = function () { api('setAccessRole', { flipId: f.id, userId: sg.dataset.u, role: b.dataset.r }).then(function () { toast('Role updated.'); viewFlip(f.id); }).catch(fail); }; }); });
@@ -767,14 +786,16 @@
     load();
   }
 
-  function editFlip(f, kind) {
+  function editFlip(f, kind, opts) {
+    opts = opts || {};
     var isNew = !f; f = f || { investors: [], kind: kind || 'flip' };
     var hold = isHolding(f), FIELDS = hold ? HOLD_FIELDS : FLIP_FIELDS, SL = statusesOf(f);
     var own = isOwner(), led = !isNew && !!f.ledger;
     var g = led ? C.live(f) : f;
     var rows = partnerRowsOf(g);
     var cashIn = led ? g.cashInvested : null;
-    modal('<h2>' + (isNew ? (hold ? 'New Holding' : 'New Flip') : 'Edit ' + esc(f.address)) + '</h2><p class="sub2">' + (led ? 'Type the base inputs (price, loan, rate, sale, rent, budget, dates). Cost totals are locked and come from expenses or the (i) line items on the Numbers card.' : 'Enter the property, loan and dates. You can type a starting cost total; it is saved as one unitemized expense line you can break out later.') + '</p><div class="calcgrid">' + FIELDS.map(function (x) {
+    var host = opts.host;
+    var html = '<h2>' + (isNew ? (hold ? 'New Holding' : 'New Flip') : 'Edit') + '</h2><p class="sub2">' + (led ? 'Type the base inputs (price, loan, rate, sale, rent, budget, dates). Cost totals are locked and come from expenses or the (i) line items on the Numbers card. Click an (i) on this page to add or edit its note. Remove Property is at the bottom.' : 'Enter the property, loan and dates. You can type a starting cost total; it is saved as one unitemized expense line you can break out later.') + '</p><div class="calcgrid">' + FIELDS.map(function (x) {
       var k = x[0], typ = x[2], der = DERIVED[k], ro = led && der, v = (led && der) ? g[k] : f[k];
       if (typ === 'num' && v !== '' && v != null) v = (k === 'interestRate') ? String(v) : m2(v);
       var lab = x[1] + (der ? lock('Total of this property’s expense entries — locked. Edit them via the (i) on Buying/Selling Closing Costs, or in Expenses.') + info(led ? 'Locked total of this property’s expense entries. Use (i) on the Numbers card for closing-cost line items, or Expenses for rehab, holding and other costs.' : 'On a new property, a typed total is saved as one unitemized expense line you can break out later.') : '');
@@ -783,18 +804,20 @@
     }).join('') + (led ? '<div class="field"><label>Cash Invested' + lock('Each partner’s purchase cash plus the expenses they paid, live from the expense entries — locked') + info('Each partner’s purchase cash plus the expenses they paid, live from the expense entries') + '</label><input class="ro" readonly tabindex="-1" value="' + esc(m2(cashIn)) + '"></div>' : '') + '</div>' +
       (isNew ? '<div class="field"><label>Status</label><select id="nst">' + SL.map(function (st) { return '<option' + (st === (hold ? 'Owned' : 'Active') ? ' selected' : '') + '>' + st + '</option>'; }).join('') + '</select></div>' : '') +
       '<div class="field"><label>Partners</label>' + partnersHtml(rows) + '</div>' +
-      '<div class="row"><button type="button" class="btn gold" id="ok">Save</button><button type="button" class="btn" id="cx">Cancel</button></div>' +
-      (!isNew && own ? '<p class="meta" style="margin-top:16px"><button type="button" class="btn sm danger" id="rmprop">Remove Property</button> Soft-deletes this ' + (hold ? 'holding' : 'flip') + '. Expense rows stay in the ledger unless you delete them separately.</p>' : ''), function (m) {
-      var P = bindPartners(m.querySelector('.prt'), rows, g.ledger);
-      document.getElementById('cx').onclick = closeModal;
-      var rm = document.getElementById('rmprop');
+      '<div class="row"><button type="button" class="btn gold" id="ok">Save</button>' + (host ? '' : '<button type="button" class="btn" id="cx">Cancel</button>') + '</div>' +
+      (!isNew && own ? '<p class="meta" style="margin-top:16px"><button type="button" class="btn sm danger" id="rmprop">Remove Property</button> Soft-deletes this ' + (hold ? 'holding' : 'flip') + '. Expense rows stay in the ledger unless you delete them separately.</p>' : '');
+    var bind = function (root) {
+      var P = bindPartners(root.querySelector('.prt'), rows, g.ledger);
+      var cx = root.querySelector('#cx');
+      if (cx) cx.onclick = function () { if (host) exitEditMode(f); else closeModal(); };
+      var rm = root.querySelector('#rmprop');
       if (rm) rm.onclick = function () {
         confirmBox('Remove Property', '<p>Soft-delete <b>' + esc(f.address) + '</b>? It will disappear from Flips and Holdings. This does not edit other deals.</p>', 'Remove', function () {
-          api('deleteFlip', { id: f.id }).then(function () { S.flips = null; closeModal(); toast('Removed.'); location.hash = hold ? '#/holdings' : '#/flips'; }).catch(fail);
+          api('deleteFlip', { id: f.id }).then(function () { sessionStorage.setItem('fl_tipedit', ''); S.flips = null; closeModal(); toast('Removed.'); location.hash = hold ? '#/holdings' : '#/flips'; }).catch(fail);
         });
       };
-      document.getElementById('ok').onclick = function () {
-        var btn = this, body = {}; document.querySelectorAll('#modal [data-k]').forEach(function (el) { if (!el.readOnly) body[el.dataset.k] = el.value; });
+      root.querySelector('#ok').onclick = function () {
+        var btn = this, body = {}; root.querySelectorAll('[data-k]').forEach(function (el) { if (!el.readOnly) body[el.dataset.k] = el.value; });
         Object.keys(body).forEach(function (k) { if (/^\$|^−\$|^-\$/.test(body[k])) body[k] = String(C.n(String(body[k]).replace('−', '-'))); });
         var bootstrap = {};
         if (isNew) {
@@ -805,12 +828,10 @@
         Object.keys(DERIVED).forEach(function (k) { delete body[k]; });
         var pr = P.read(); if (pr.error) return toast(pr.error, true);
         if (isNew || !sameRows(rows, pr.rows)) body.investors = withMeta(f, pr.rows);
-        var nst = document.getElementById('nst'); if (nst) body.status = nst.value;
+        var nst = root.querySelector('#nst'); if (nst) body.status = nst.value;
         if (isNew) body.kind = hold ? 'holding' : 'flip';
         btn.disabled = true;
-        var saved;
         (isNew ? api('createFlip', { flip: body }) : api('updateFlip', { id: f.id, flip: body })).then(function (r) {
-          saved = r;
           var keys = Object.keys(bootstrap);
           if (!keys.length) return r;
           return keys.reduce(function (p0, k) {
@@ -821,10 +842,17 @@
               return api('saveExpense', { expense: e });
             });
           }, Promise.resolve()).then(function () { return r; });
-        }).then(function (r) { expensesChanged(); closeModal(); toast(Object.keys(bootstrap).length ? 'Saved. Starting cost totals were added as expense line items you can break out later.' : 'Saved.'); location.hash = '#/flip/' + r.id; if (!isNew) viewFlip(r.id); })
-          .catch(fail).then(function () { btn.disabled = false; });
+        }).then(function (r) {
+          expensesChanged();
+          if (!host) closeModal();
+          toast(Object.keys(bootstrap).length ? 'Saved. Starting cost totals were added as expense line items you can break out later.' : 'Saved.');
+          location.hash = '#/flip/' + r.id;
+          if (!isNew) viewFlip(r.id);
+        }).catch(fail).then(function () { btn.disabled = false; });
       };
-    });
+    };
+    if (host) { host.innerHTML = html; bind(host); }
+    else modal(html, function (m) { bind(m); });
   }
 
 
@@ -1077,7 +1105,7 @@
   }
   function renderHolding(f) {
     markTab('#/holdings');
-    TIPS = { f: f, edit: isOwner() && !!sessionStorage.getItem('fl_tipedit') };
+    TIPS = { f: f, edit: !!sessionStorage.getItem('fl_tipedit') && (isOwner() || f.canManage) };
     var x = C.holding(f), can = f.canManage;
     var ln = function (k, v, cls, opts) {
       opts = opts || {};
@@ -1086,7 +1114,8 @@
     };
     var html = '<p class="meta"><a href="#/holdings">← Holdings</a></p><div class="spread"><div><h1>' + esc(f.address) + '</h1><p class="lead">' + esc(f.city) + info(f.partners || '', 'h:Partners') + '</p></div><div class="row">' +
       (can ? '<select id="st" class="btn" aria-label="Status">' + HSTATUSES.map(function (s) { return '<option' + (s === f.status ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select>' : '<span class="pill">' + esc(f.status) + '</span>') +
-      tipToggle() + '<button class="btn" id="pdf" type="button">PDF Report</button>' + (can ? '<button class="btn gold" id="ed">Edit Numbers</button>' : '') + (can ? '<button class="btn" id="invs">Investors</button>' : '') + '</div></div>';
+      tipToggle({ can: can }) + '<button class="btn" id="pdf" type="button">PDF Report</button>' + (can ? '<button class="btn" id="invs">Investors</button>' : '') + '</div></div>';
+    if (TIPS && TIPS.edit && can) html += '<div id="edpanel" class="card rule" style="margin-top:18px"></div>';
     html += '<div class="grid g4" style="margin-top:4px">' +
       kpi('Equity', sMoney(x.equity, 0), (x.value ? money(x.value, 0) + ' value' : 'Needs value') + ' − ' + money(x.loanBalance, 0) + ' loan', x.equity < 0 ? 'bad' : 'good') +
       kpi('Monthly Cash Flow', x.hasIncome ? sMoney(x.monthlyCashFlow, 0) : '<span class="pill warn">Needs Data</span>', x.hasIncome ? money(x.noi, 0) + ' annual NOI' : (x.rent ? money(x.rent, 0) + ' rent; add monthly expenses' : 'Add rent and monthly expenses')) +
@@ -1108,9 +1137,8 @@
     renderInventory('flip', f.id, f.inventory || [], can); propExpenses(f); renderTNotes(f);
     var st = document.getElementById('st');
     if (st) st.onchange = function () { api('setStatus', { id: f.id, status: st.value }).then(function () { toast('Status set to ' + st.value + '.'); S.flips = null; viewFlip(f.id); }).catch(function (e) { fail(e); st.value = f.status; }); };
-    var ed = document.getElementById('ed'); if (ed) ed.onclick = function () { editFlip(f); };
     bindInvestors(f);
-    bindPdf(function () { return pdfPropData(f, x); }, 'holding', 'Holding Report', f.address); bindTipToggle(f);
+    bindPdf(function () { return pdfPropData(f, x); }, 'holding', 'Holding Report', f.address); bindTipToggle(f, { can: can });
     if (typeof bindEstRows === 'function') bindEstRows();
   }
 
