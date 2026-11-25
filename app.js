@@ -4,7 +4,7 @@
   var CFG = window.FLIPS_CONFIG || {};
   var C = window.FlipCalc;
   var STATUSES = ['Estimate', 'Under Contract', 'In Escrow', 'Rehab', 'Active', 'Pending', 'Sold'];
-  var HSTATUSES = ['Owned', 'Rehab', 'Rented', 'Vacant', 'For Sale', 'Sold'];
+  var HSTATUSES = ['Owned', 'Rehab', 'Rented', 'Airbnb', 'Vacant', 'For Sale', 'Sold'];
   function isHolding(f) { return f && f.kind === 'holding'; }
   function verAtLeast(v, want) {
     var a = String(v || '0').split('.').map(function (n) { return parseInt(n, 10) || 0; });
@@ -15,7 +15,13 @@
     return true;
   }
   function statusesOf(f) {
-    if (isHolding(f)) return (S.holdingStatuses && S.holdingStatuses.length) ? S.holdingStatuses : HSTATUSES;
+    if (isHolding(f)) {
+      var held = (S.holdingStatuses && S.holdingStatuses.length) ? S.holdingStatuses : [];
+      var out = [];
+      HSTATUSES.forEach(function (s) { if (out.indexOf(s) < 0) out.push(s); });
+      held.forEach(function (s) { if (out.indexOf(s) < 0) out.push(s); });
+      return out;
+    }
     var list = (S.statuses && S.statuses.length) ? S.statuses : STATUSES;
     // Under Contract is accepted by backend 1.4.3+; hide it until then so a status change cannot be rejected.
     if (!verAtLeast(S.version, '1.4.3')) {
@@ -1140,7 +1146,7 @@
     return '<div class="grid g2">' + list.map(function (f) {
       var x = C.holding(f);
       return '<div class="card flipcard rule" data-id="' + esc(f.id) + '" tabindex="0"><div class="spread"><div><div class="addr">' + esc(f.address) + '</div><div class="meta">' + esc(f.city) + '</div></div>' +
-        '<div class="row"><span class="pill">' + esc(f.status) + '</span>' + (f.myRole === 'admin' ? '<span class="pill admin">Property Admin</span>' : '') + '</div></div>' +
+        '<div class="row"><span class="pill s-' + esc(f.status.replace(/\s/g, '')) + '">' + esc(f.status) + '</span>' + (f.myRole === 'admin' ? '<span class="pill admin">Property Admin</span>' : '') + '</div></div>' +
         '<div class="spread" style="margin-top:10px;align-items:center"><div class="mini" style="flex:1"><div>Value<b>' + (x.value ? money(x.value, 0) : '<span class="pill warn">Needs Value</span>') + '</b></div><div>Equity<b>' + sMoney(x.equity, 0) + '</b></div>' +
         '<div>Rent / Mo<b>' + (x.rent ? money(x.rent, 0) : '<span class="pill warn">Needs Data</span>') + '</b></div><div>Cash Flow / Mo<b>' + (x.hasIncome ? sMoney(x.monthlyCashFlow, 0) : '<span class="pill warn">Needs Data</span>') + '</b></div><div>Cash In<b>' + money(x.cashInvested, 0) + '</b></div><div>Loan Balance<b>' + money(x.loanBalance, 0) + '</b></div><div>Purchased<b>' + (fmtDate(f.purchaseDate) || '<span class="pill warn">Needs Date</span>') + '</b></div></div>' +
         donut(x.totalRoi || 0, 1, pct(x.totalRoi, 0), 'Total Return', x.totalRoi == null ? 'gold' : (x.totalRoi >= 0 ? 'good' : 'bad'), 96) + '</div></div>';
@@ -1268,7 +1274,7 @@
       return '<div class="ln' + (cls ? ' ' + cls : '') + '"><span>' + k + icon + '</span><span class="num">' + v + '</span></div>';
     };
     var html = '<p class="meta"><a href="#/holdings">← Holdings</a></p><div class="spread"><div><h1>' + esc(f.address) + '</h1><p class="lead">' + esc(f.city) + info(f.partners || '', 'h:Partners') + '</p></div><div class="row">' +
-      (can ? '<select id="st" class="btn" aria-label="Status">' + HSTATUSES.map(function (s) { return '<option' + (s === f.status ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select>' : '<span class="pill">' + esc(f.status) + '</span>') +
+      (can ? '<select id="st" class="btn" aria-label="Status">' + statusesOf(f).map(function (s) { return '<option' + (s === f.status ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select>' : '<span class="pill s-' + esc(f.status.replace(/\s/g, '')) + '">' + esc(f.status) + '</span>') +
       tipToggle({ can: can }) + '<button class="btn" id="pdf" type="button">PDF Report</button>' + (can ? '<button class="btn" id="invs">Investors</button>' : '') + '</div></div>';
     if (TIPS && TIPS.edit && can) html += '<div id="edpanel" class="card rule" style="margin-top:18px"></div>';
     html += '<div class="grid g4" style="margin-top:4px">' +
@@ -1474,12 +1480,14 @@
       host.innerHTML = '<div class="card tblwrap"><div class="exhead"><div class="kpi"><div class="k">Total Expenses' + lock('Sum of this property’s expense entries (not including Purchase Cash capital) — locked') + info(off ? money(off) + ' of these entries are marked Excluded or Operating, so they are not in the deal numbers' : '') + '</div><div class="v" style="font-size:24px;margin-top:6px">' + money(total) + '</div><div class="meta">' + exp.length + ' entr' + (exp.length === 1 ? 'y' : 'ies') + '</div></div>' +
         '<div class="row"><button type="button" class="btn sm" id="pxcsv">Export CSV</button><button type="button" class="btn sm gold" id="pxadd">Add Expense</button></div></div>' +
         (exp.length ? expenseBreakdownLines(exp, f) : '') +
+        (rows.length ? '<details class="exdetails"><summary><span class="exd-show">Show Expense Details</span><span class="exd-hide">Hide Expense Details</span></summary>' : '') +
         '<table class="t"><thead><tr><th>Date</th><th>Payee</th><th>Category</th><th>Paid By</th><th>Method</th><th class="r">Amount</th><th>Receipt</th><th></th></tr></thead><tbody>' +
         (rows.length ? rows.map(function (e) {
           return '<tr class="erow" data-xe="' + esc(e.id) + '"><td>' + datePill(e) + '</td><td><b>' + esc(e.payee) + '</b>' + info(notesOf(e)) + '</td><td>' + esc(e.category) + (e.linkId ? '<div>' + phasePill(e) + '</div>' : '') + '</td><td>' + (payerOf(e) ? esc(payerOf(e)) : '<span class="meta">—</span>') + '</td><td class="meta">' + esc(e.method) + '</td>' +
             '<td class="r num">' + money(e.amount) + '</td><td>' + (e.receiptUrl ? '<a href="' + esc(e.receiptUrl) + '" target="_blank" rel="noopener">View</a>' : '<span class="meta">—</span>') + '</td>' +
             '<td class="r"><button type="button" class="btn sm" data-xe="' + esc(e.id) + '">Edit</button> <button type="button" class="btn sm danger" data-xd="' + esc(e.id) + '">Delete</button></td></tr>';
-        }).join('') : '<tr><td colspan="8" class="empty">No expenses on this property yet.</td></tr>') + '</tbody></table></div>';
+        }).join('') : '<tr><td colspan="8" class="empty">No expenses on this property yet.</td></tr>') + '</tbody></table>' +
+        (rows.length ? '</details>' : '') + '</div>';
       document.getElementById('pxadd').onclick = function () { editExpense(null, f); };
       document.getElementById('pxcsv').onclick = function () { exportCsv(rows); };
       host.querySelectorAll('tr.erow').forEach(function (tr) { tr.onclick = function (ev) { if (ev.target.closest('button,a,.info')) return; var row = rows.filter(function (e) { return e.id === tr.getAttribute('data-xe'); })[0]; if (row) editExpense(row, f); }; });

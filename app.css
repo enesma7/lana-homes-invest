@@ -101,8 +101,8 @@ select.btn{padding-right:28px}
 .check{display:flex;gap:8px;align-items:center;font-size:13.5px;color:var(--char)}
 .pill{display:inline-flex;align-items:center;gap:5px;font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;border:1px solid var(--line2);color:var(--char);background:#fff;white-space:nowrap;letter-spacing:.02em}
 .pill.s-Sold{background:var(--gold);border-color:transparent;color:#000007}
-.pill.s-Active,.pill.s-Rehab,.pill.s-Rented,.pill.s-InEscrow{border-color:#D5BE87;color:#000007}
-.pill.s-Active:before,.pill.s-Rehab:before,.pill.s-Rented:before{content:"";width:6px;height:6px;border-radius:50%;background:var(--green1);box-shadow:0 0 0 3px rgba(31,168,85,.18);animation:pulse 2s infinite}
+.pill.s-Active,.pill.s-Rehab,.pill.s-Rented,.pill.s-Airbnb,.pill.s-InEscrow{border-color:#D5BE87;color:#000007}
+.pill.s-Active:before,.pill.s-Rehab:before,.pill.s-Rented:before,.pill.s-Airbnb:before{content:"";width:6px;height:6px;border-radius:50%;background:var(--green1);box-shadow:0 0 0 3px rgba(31,168,85,.18);animation:pulse 2s infinite}
 .pill.s-InEscrow:before{content:"";width:6px;height:6px;border-radius:50%;background:var(--gold2);box-shadow:0 0 0 3px rgba(213,190,135,.18);animation:pulse-gold 2s infinite}
 @keyframes pulse{50%{box-shadow:0 0 0 5px rgba(31,168,85,.05)}}
 @keyframes pulse-gold{50%{box-shadow:0 0 0 5px rgba(213,190,135,.05)}}
@@ -423,3 +423,17 @@ tr.erow:hover td:last-child{background:#FAFAFC}
 .taxyear summary::-webkit-details-marker{display:none}
 .taxyear summary:before{content:"";width:6px;height:6px;border-right:2px solid var(--char);border-bottom:2px solid var(--char);transform:rotate(-45deg);margin-right:8px;flex:none}
 .taxyear[open] summary:before{transform:rotate(45deg);margin-top:-2px}
+
+/* Expense itemized table: collapsed by default on flip/holding detail */
+.exdetails{border-top:1px solid var(--line);margin:4px 0 0;padding:0}
+.exdetails summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none;padding:12px 18px;font-size:13px;font-weight:700;color:var(--char);user-select:none;-webkit-user-select:none;-webkit-tap-highlight-color:transparent}
+.exdetails summary::-webkit-details-marker{display:none}
+.exdetails summary::after{content:"";width:7px;height:7px;border-right:2px solid var(--char);border-bottom:2px solid var(--char);transform:rotate(45deg);margin-top:-4px;flex:none}
+.exdetails[open] summary::after{transform:rotate(-135deg);margin-top:2px}
+.exdetails .exd-hide{display:none}
+.exdetails[open] .exd-show{display:none}
+.exdetails[open] .exd-hide{display:inline}
+.exdetails .tblwrap, .exdetails table.t{margin:0}
+@media (max-width:640px){
+  .exdetails summary{padding:12px 14px;font-size:13.5px;min-height:44px}
+}
