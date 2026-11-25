@@ -227,6 +227,20 @@
   function fmt(v) { var s = Math.abs(v).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ','); return (v < 0 ? '−$' : '$') + s; }
   function pct(v) { var p = Math.round(n(v) * 1000) / 10; return (p % 1 ? p.toFixed(1) : String(p)) + '%'; }
 
+  /** Profit/loss split per partner. splitMode 'auto' = share of the partners' cash in (live capital); anything else is a
+      stored, agreed (manual) split. Auto partners share whatever the manual ones leave, by capital (equally if no cash yet). */
+  function splitsOf(rows) {
+    var auto = rows.filter(function (x) { return x.splitMode === 'auto'; });
+    if (!auto.length) return rows;
+    var fixed = rows.filter(function (x) { return x.splitMode !== 'auto'; }).reduce(function (t, x) { return t + n(x.split); }, 0);
+    var left = Math.max(0, 1 - fixed), cap = auto.reduce(function (t, x) { return t + Math.max(0, n(x.capital)); }, 0);
+    return rows.map(function (x) {
+      if (x.splitMode !== 'auto') return x;
+      var o = {}; for (var k in x) o[k] = x[k];
+      o.split = cap > 0 ? left * Math.max(0, n(x.capital)) / cap : left / auto.length;
+      return o;
+    });
+  }
   /** A saved flip's numbers → totals, ROI, hold, investor distributions. Pass a flip through live() first when it has a ledger. */
   function flip(f, today) {
     if (f && f.ledger && !f._liveApplied) { f = ledgerLive(f); f._liveApplied = true; }
@@ -240,13 +254,13 @@
     var days = f.purchaseDate && end ? daysBetween(f.purchaseDate, end) : 0;
     var ann = sold && f.purchaseDate && f.saleDate ? annualize(roiCash, days) : { simple: null, compound: null };
     var meta = (f.investors || []).filter(function (x) { return x && x.payout; })[0];
-    var rows0 = (f.investors || []).filter(function (x) { return x && !ledgerSetupRow(x); }), given = 0;
+    var rows0 = splitsOf((f.investors || []).filter(function (x) { return x && !ledgerSetupRow(x); })), given = 0;
     var splitSum = rows0.reduce(function (t, x) { return t + n(x.split); }, 0);
     var inv = rows0.map(function (x, k) {
       // Shares are rounded to the cent; when the splits add to 100% the last partner takes the leftover cent so the totals tie out.
       var share = k === rows0.length - 1 && Math.abs(splitSum - 1) < 1e-6 ? r2(profit) - given : r2(profit * n(x.split)); given = r2(given + share);
       return { name: x.name, capital: n(x.capital), split: n(x.split), profitShare: r2(share), distribution: r2(n(x.capital) + share),
-        purchaseCash: x.purchaseCash, expensesPaid: x.expensesPaid, note: x.note || '' };
+        purchaseCash: x.purchaseCash, expensesPaid: x.expensesPaid, note: x.note || '', splitMode: x.splitMode === 'auto' ? 'auto' : 'manual' };
     });
     var out = { totalCost: r2(totalCost), profit: r2(profit), roiCash: roiCash, roiCost: roiCost, daysHeld: days,
       needsSaleDate: sold && !f.saleDate, needsPurchaseDate: !f.purchaseDate, simpleAnnual: ann.simple, compoundAnnual: ann.compound,
@@ -275,6 +289,6 @@
       totalRoi: cash > 0 && value > 0 ? (equity - cash + (hasIncome ? cf * 12 : 0)) / cash : null, noi: r2(hasIncome ? cf * 12 : 0), cashFlowToDate: r2(cfToDate), monthsHeld: months, daysHeld: days };
   }
 
-  var api = { estimate: estimate, flip: flip, holding: holding, live: ledgerLive, ledger: ledger, ledgers: ledgers, phaseOf: ledgerPhase, atSaleOf: ledgerAtSale, payerOf: ledgerPayer, PHASES: LEDGER_PHASES, DEAL_PHASES: LEDGER_DEAL, daysBetween: daysBetween, annualize: annualize, n: n };
+  var api = { splitsOf: splitsOf, payerMatches: ledgerPayerMatches, estimate: estimate, flip: flip, holding: holding, live: ledgerLive, ledger: ledger, ledgers: ledgers, phaseOf: ledgerPhase, atSaleOf: ledgerAtSale, payerOf: ledgerPayer, PHASES: LEDGER_PHASES, DEAL_PHASES: LEDGER_DEAL, daysBetween: daysBetween, annualize: annualize, n: n };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.FlipCalc = api;
 })(this);

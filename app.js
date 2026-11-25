@@ -449,7 +449,7 @@
       var ln = function (k, v, cls) { return '<div class="ln' + (cls ? ' ' + cls : '') + '"><span>' + k + info('', 'ln:' + plain(k)) + '</span><span class="num">' + v + '</span></div>'; };
       var budgetPct = f.rehabBudget ? Math.min(1.5, f.rehabSpent / f.rehabBudget) : 0;
       var html = '<p class="meta"><a href="#/' + (sold ? 'archive' : 'flips') + '">← ' + (sold ? 'Archive' : 'Flips') + '</a></p>' +
-        '<div class="spread"><div><h1>' + esc(f.address) + '</h1><p class="lead">' + esc(f.city) + (f.partners ? ' · ' + esc(f.partners) : '') + '</p></div><div class="row">' +
+        '<div class="spread"><div><h1>' + esc(f.address) + '</h1><p class="lead">' + esc(f.city) + info(f.partners || '', 'h:Partners') + '</p></div><div class="row">' +
         (can ? '<select id="st" class="btn" aria-label="Status">' + STATUSES.map(function (s) { return '<option' + (s === f.status ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select>' : '<span class="pill s-' + esc(f.status.replace(/\s/g, '')) + '">' + esc(f.status) + '</span>') +
         tipToggle() + '<button class="btn" id="pdf" type="button">PDF Report</button>' + (can ? '<button class="btn" id="ed">Edit Numbers</button>' : '') + (can ? '<button class="btn gold" id="inv">Invite User</button>' : '') + '</div></div>';
       html += '<div class="grid g4" style="margin-top:4px">' +
@@ -458,7 +458,7 @@
         kpi('Return On Total Cost', sPct(x.roiCost), 'On ' + money(x.totalCost, 0) + ' all-in') +
         kpi(sold ? 'Annualized (Simple / Compound)' : 'Days Held So Far', sold ? (x.simpleAnnual == null ? '<span class="pill warn">Needs Date</span>' : sPct(x.simpleAnnual) + ' <span class="meta">/ ' + pct(x.compoundAnnual) + '</span>') : (x.daysHeld || '—'),
           sold ? (x.daysHeld ? x.daysHeld + ' days, purchase to sale' : 'Add the sale close date') : 'Since ' + (fmtDate(f.purchaseDate) || 'purchase')) + '</div>';
-      html += '<div class="grid g2" style="margin-top:22px"><div class="card rule"><h2>The Numbers</h2><div class="lines">' +
+      html += '<div class="grid g2" style="margin-top:22px"><div class="card rule"><h2>The Numbers' + info(f.notes || '', 'h:Notes') + '</h2><div class="lines">' +
         ln('Purchase Price', money(f.purchasePrice)) + ln('Loan' + (f.lender ? ' · ' + esc(f.lender) : ''), money(f.loanAmount)) +
         ln('Buying Closing Costs', money(f.buyClosingCosts)) + ln('Rehab Spent', money(f.rehabSpent)) + ln('Holding Costs (Interest, Taxes, Insurance)', money(f.holdingCosts)) +
         ln('Selling Costs', money(f.sellingCosts)) + (f.otherCosts ? ln(esc(f.otherCostsLabel || 'Other Costs'), money(f.otherCosts)) : '') +
@@ -466,9 +466,9 @@
         ln('Total Cost', money(x.totalCost), 'tot') + ln(sold ? 'Sale Price' : 'Projected Sale Price', money(f.salePrice), 'tot') + ln(sold ? 'Profit' : 'Projected Profit', sMoney(x.profit), 'tot') + '</div></div>';
       html += '<div class="card rule"><h2>Rehab Budget Vs Spent</h2><p class="meta">' + money(f.rehabSpent, 0) + ' of ' + money(f.rehabBudget, 0) + '</p><div class="bar" style="margin:10px 0 6px"><i class="' + (budgetPct > 1 ? 'over' : '') + '" style="width:' + Math.min(100, budgetPct * 100).toFixed(1) + '%"></i></div>' +
         '<p class="sub2">' + (x.rehabVariance > 0 ? '<span class="neg">' + money(x.rehabVariance) + '</span> over budget' : x.rehabVariance < 0 ? '<span class="pos">' + money(-x.rehabVariance) + '</span> under budget' : 'On budget') + '</p>' +
-        '<hr class="sep"><h2>Investors</h2>' +
-        (x.investors.length ? '<table class="t"><thead><tr><th>Investor</th><th class="r">Capital</th><th class="r">Split</th><th class="r">Profit Share</th><th class="r">Payout</th></tr></thead><tbody>' + x.investors.map(function (i) { return '<tr><td>' + esc(i.name) + '</td><td class="r num">' + money(i.capital, 0) + '</td><td class="r">' + pct(i.split, 1) + '</td><td class="r num">' + sMoney(i.profitShare, 0) + '</td><td class="r num"><b>' + money(i.distribution, 0) + '</b></td></tr>'; }).join('') + '</tbody></table>' : '<p class="empty">No investors listed.</p>') +
-        '<hr class="sep"><div class="mini"><div>Purchased<b>' + (fmtDate(f.purchaseDate) || '<span class="pill warn">Needs Date</span>') + '</b></div><div>Sold<b>' + (sold ? soldCell(f) : '—') + '</b></div><div>Cash In<b>' + money(f.cashInvested, 0) + '</b></div></div></div></div>';
+        '<hr class="sep"><h2>Partners</h2>' +
+        (x.investors.length ? '<table class="t"><thead><tr><th>Partner</th><th class="r">Capital</th><th class="r">Split</th><th class="r">Profit Share</th><th class="r">Payout</th></tr></thead><tbody>' + x.investors.map(function (i) { return '<tr><td>' + esc(i.name) + '</td><td class="r num">' + money(i.capital, 0) + '</td><td class="r">' + pct(i.split, 1) + (i.splitMode === 'manual' ? info('Manual split: an agreed percentage, not the cash share') : '') + '</td><td class="r num">' + sMoney(i.profitShare, 0) + '</td><td class="r num"><b>' + money(i.distribution, 0) + '</b></td></tr>'; }).join('') + '</tbody></table>' : '<p class="empty">No partners listed.</p>') +
+        '<hr class="sep"><div class="mini"><div>Purchased' + info(f.datesNote || '', 'h:Dates') + '<b>' + (fmtDate(f.purchaseDate) || '<span class="pill warn">Needs Date</span>') + '</b></div><div>Sold<b>' + (sold ? soldCell(f) : '—') + '</b></div><div>Cash In<b>' + money(f.cashInvested, 0) + '</b></div></div></div></div>';
       if (x.payout) html += payoutCard(x.payout);
       if (own) html += '<div class="label">Expenses</div><div id="proex"></div>';
       html += '<div class="label">Inventory Needs List</div><div id="invlist"></div>';
@@ -488,7 +488,9 @@
       if (st) st.onchange = function () {
         var s = st.value;
         var go = function (saleDate) { api('setStatus', { id: f.id, status: s, saleDate: saleDate || '' }).then(function () { toast('Status set to ' + s + (s === 'Sold' ? '. Moved to the Archive.' : '.')); S.flips = null; viewFlip(f.id); }).catch(function (e) { fail(e); st.value = f.status; }); };
-        if (s === 'Sold') {
+        if (s === 'In Escrow' && f.status !== 'In Escrow' && can) {
+          partnersPrompt(f, 'Who Are The Partners?', 'Save And Move To In Escrow', function () { go(); }, function () { st.value = f.status; });
+        } else if (s === 'Sold') {
           modal('<h2>Mark As Sold</h2><p class="sub2">Sold flips move to the Archive. Add the sale close date so hold time and annualized return can be computed, or leave it blank to flag it as Needs Date.</p><div class="field"><label>Sale Close Date</label><input type="date" id="sd" value="' + esc(f.saleDate || '') + '"></div><div class="row"><button class="btn gold" id="ok">Mark Sold</button><button class="btn" id="cx">Cancel</button></div>', function () {
             document.getElementById('ok').onclick = function () { var v = document.getElementById('sd').value; closeModal(); go(v); };
             document.getElementById('cx').onclick = function () { closeModal(); st.value = f.status; };
@@ -556,71 +558,169 @@
   }
 
   var FLIP_FIELDS = [['address', 'Property Address', 'text'], ['city', 'City, State Zip', 'text'], ['purchaseDate', 'Purchase Close Date', 'date'], ['saleDate', 'Sale Close Date', 'date'],
-    ['purchasePrice', 'Purchase Price', 'num'], ['loanAmount', 'Loan Amount', 'num'], ['lender', 'Lender', 'text'], ['buyClosingCosts', 'Buying Closing Costs (Net Of Credits)', 'num'],
+    ['purchasePrice', 'Purchase Price', 'num'], ['loanAmount', 'Loan Amount', 'num'], ['lender', 'Lender', 'text'], ['buyClosingCosts', 'Buying Closing Costs', 'num'],
     ['rehabBudget', 'Rehab Budget', 'num'], ['rehabSpent', 'Rehab Spent', 'num'], ['holdingCosts', 'Holding Costs', 'num'], ['sellingCosts', 'Selling Costs', 'num'],
     ['otherCosts', 'Other Costs', 'num'], ['otherCostsLabel', 'Other Costs Label', 'text'], ['adjustments', 'Credits (Reduce Cost)', 'num'], ['adjustmentsLabel', 'Credits Label', 'text'],
-    ['salePrice', 'Sale Price (Or Projected)', 'num'], ['cashInvested', 'Cash Invested', 'num'], ['partners', 'Partners', 'text'], ['datesNote', 'Dates Note', 'text']];
+    ['salePrice', 'Sale Price (Or Projected)', 'num']];
   var HOLD_FIELDS = [['address', 'Property Address', 'text'], ['city', 'City, State Zip', 'text'], ['purchaseDate', 'Purchase Close Date', 'date'], ['saleDate', 'Sale Close Date (If Sold)', 'date'],
     ['purchasePrice', 'Purchase Price', 'num'], ['buyClosingCosts', 'Closing Costs', 'num'], ['loanAmount', 'Original Loan', 'num'], ['lender', 'Lender', 'text'], ['loanBalance', 'Current Loan Balance', 'num'],
-    ['rehabBudget', 'Improvements Budget', 'num'], ['rehabSpent', 'Improvements Spent', 'num'], ['cashInvested', 'Cash Invested', 'num'], ['currentValue', 'Current Value', 'num'],
-    ['monthlyIncome', 'Monthly Income (Rent)', 'num'], ['monthlyExpenses', 'Monthly Expenses (Mortgage, Tax, Insurance, HOA, Utilities)', 'num'], ['salePrice', 'Sale Price (If Sold)', 'num'],
-    ['partners', 'Partners', 'text'], ['datesNote', 'Dates Note', 'text']];
+    ['rehabBudget', 'Improvements Budget', 'num'], ['rehabSpent', 'Improvements Spent', 'num'], ['currentValue', 'Current Value', 'num'],
+    ['monthlyIncome', 'Monthly Income (Rent)', 'num'], ['monthlyExpenses', 'Monthly Expenses', 'num'], ['salePrice', 'Sale Price (If Sold)', 'num']];
   // Cost buckets and cash in are not typed numbers: they come from the expense entries. Typing a new total here
   // records the difference as an adjustment entry, so the entries stay the one source and everything recalculates.
   var DERIVED = { buyClosingCosts: 'Buying', rehabSpent: 'Rehab', holdingCosts: 'Holding', sellingCosts: 'Selling', otherCosts: 'After Sale' };
-  function invLine(i, linked) { return linked ? [i.name, i.purchaseCash || 0, Math.round(i.split * 10000) / 100].concat(i.note ? [i.note] : []).join(' | ') : i.name + ' | ' + i.capital + ' | ' + (Math.round(i.split * 10000) / 100); }
+  function m2(v) { return money(v); }
+
+  /* ---------- Partners: one structured row per partner (Name, Purchase Cash, live Capital, Profit/Loss %) ---------- */
+  function pctTxt(v) { return (Math.round(v * 10000) / 100).toFixed(2) + '%'; }
+  function partnerRowsOf(f) { return (f.investors || []).filter(function (i) { return i && !i.payout && !i.meta; }); }
+  function partnersHtml(rows, opts) {
+    opts = opts || {};
+    return '<div class="prt" data-names-only="' + (opts.namesOnly ? '1' : '') + '"><div class="prows"></div>' +
+      '<div class="prt-foot"><button type="button" class="btn sm" data-padd>+ Add Partner</button><div class="prt-tot"><span>Total Cash In</span><b class="num" data-ptot>$0.00</b><span>Split</span><b class="num" data-psplit>0.00%</b></div></div></div>';
+  }
+  // Binds the rows editor inside host. ledger = the property's live ledger (expenses each partner paid). Returns { read() }.
+  function bindPartners(host, rows, ledger, opts) {
+    opts = opts || {};
+    var own = isOwner(), namesOnly = !!opts.namesOnly, list = host.querySelector('.prows');
+    var paidBy = function (name) { var t = 0; for (var p in (ledger && ledger.paid) || {}) if (C.payerMatches(p, name)) t += ledger.paid[p]; return Math.round(t * 100) / 100; };
+    var state = rows.map(function (r) { return { name: r.name || '', purchaseCash: r.purchaseCash != null ? Number(r.purchaseCash) : Number(r.capital) || 0, split: Number(r.split) || 0, auto: r.splitMode === 'auto', note: r.note || '', orig: r }; });
+    if (!state.length) state.push({ name: '', purchaseCash: 0, split: 0, auto: true, note: '' });
+    function calc() {
+      var rs = state.map(function (s) { return { name: s.name, capital: s.purchaseCash + paidBy(s.name), split: s.split, splitMode: s.auto ? 'auto' : 'manual' }; });
+      return C.splitsOf(rs);
+    }
+    function draw() {
+      var live = calc();
+      list.innerHTML = state.map(function (s, i) {
+        var lv = live[i];
+        return '<div class="prow" data-i="' + i + '">' +
+          '<label class="pf pn"><span>Name</span><input data-f="name" value="' + esc(s.name) + '" placeholder="Partner name" autocomplete="off"></label>' +
+          (namesOnly ? '' : '<label class="pf"><span>Purchase Cash' + info('Cash this partner put in at purchase. Expenses they paid are added from the expense entries.') + '</span><input data-f="purchaseCash" inputmode="decimal" value="' + esc(m2(s.purchaseCash)) + '"></label>' +
+            '<label class="pf"><span>Capital' + info('Purchase cash + the expenses this partner paid, live from the expense entries') + '</span><input class="ro" readonly tabindex="-1" value="' + esc(m2(lv.capital)) + '"></label>') +
+          '<label class="pf"><span>Profit/Loss %' + (s.auto ? info('Automatic: this partner’s share of the partners’ total cash in') : info('Manual split: an agreed percentage typed in, not the cash share')) + '</span>' +
+            '<input data-f="split" inputmode="decimal" ' + (s.auto || !own ? 'readonly tabindex="-1" class="ro" ' : '') + 'value="' + esc(pctTxt(lv.split)) + '"></label>' +
+          '<div class="pacts">' + (own ? '<label class="ovr"><input type="checkbox" data-f="ovr"' + (s.auto ? '' : ' checked') + '> Override</label>' : '') +
+            (namesOnly ? '' : '<button type="button" class="pnb' + (s.note ? '' : ' add') + '" data-pnote aria-label="' + (s.note ? 'Edit note' : 'Add note') + '">' + (s.note ? 'i' : '+') + '</button>') +
+            '<button type="button" class="prm" data-prm aria-label="Remove partner">×</button></div>' +
+          '<textarea class="pnote" data-f="note" rows="2" placeholder="Optional note (shows behind an (i))" hidden>' + esc(s.note) + '</textarea></div>';
+      }).join('');
+      var tot = live.reduce(function (t, r) { return t + r.capital; }, 0), sp = live.reduce(function (t, r) { return t + r.split; }, 0);
+      host.querySelector('[data-ptot]').textContent = m2(tot);
+      var ps = host.querySelector('[data-psplit]'); ps.textContent = pctTxt(sp); ps.classList.toggle('neg', Math.abs(sp - 1) > 0.00005);
+    }
+    host.addEventListener('input', function (e) {
+      var row = e.target.closest('.prow'); if (!row) return; var s = state[+row.dataset.i], k = e.target.dataset.f;
+      if (k === 'name') s.name = e.target.value; else if (k === 'note') s.note = e.target.value;
+      else if (k === 'purchaseCash') s.purchaseCash = C.n(e.target.value); else if (k === 'split') s.split = C.n(e.target.value) / 100;
+      if (k === 'note') return;
+      // refresh the computed boxes without stealing focus
+      var live = calc();
+      host.querySelectorAll('.prow').forEach(function (r, i) {
+        var caps = r.querySelectorAll('input.ro'); var lv = live[i];
+        caps.forEach(function (el) { if (el.dataset.f === 'split') { if (state[i].auto) el.value = pctTxt(lv.split); } else el.value = m2(lv.capital); });
+      });
+      var tot = live.reduce(function (t, r) { return t + r.capital; }, 0), sp = live.reduce(function (t, r) { return t + r.split; }, 0);
+      host.querySelector('[data-ptot]').textContent = m2(tot); var ps = host.querySelector('[data-psplit]'); ps.textContent = pctTxt(sp); ps.classList.toggle('neg', Math.abs(sp - 1) > 0.00005);
+    });
+    host.addEventListener('change', function (e) {
+      var row = e.target.closest('.prow'); if (!row) return; var s = state[+row.dataset.i];
+      if (e.target.dataset.f === 'ovr') { if (e.target.checked) { s.split = calc()[+row.dataset.i].split; s.auto = false; } else s.auto = true; draw(); }
+      if (e.target.dataset.f === 'purchaseCash') e.target.value = m2(s.purchaseCash);
+    });
+    host.addEventListener('click', function (e) {
+      if (e.target.closest('[data-padd]')) { state.push({ name: '', purchaseCash: 0, split: 0, auto: true, note: '' }); draw(); var ins = host.querySelectorAll('.prow input[data-f=name]'); ins[ins.length - 1].focus(); return; }
+      var rm = e.target.closest('[data-prm]'); if (rm) { state.splice(+rm.closest('.prow').dataset.i, 1); draw(); return; }
+      var nb = e.target.closest('[data-pnote]'); if (nb) { e.stopPropagation(); var ta = nb.closest('.prow').querySelector('.pnote'); ta.hidden = !ta.hidden; if (!ta.hidden) ta.focus(); }
+    }, true);
+    draw();
+    return {
+      // Rows to store, or an error. Unchanged rows keep their exact stored split (e.g. 1/3), so the math doesn't move.
+      read: function () {
+        var live = calc(), out = [], sp = 0;
+        for (var i = 0; i < state.length; i++) {
+          var s = state[i]; if (!s.name.trim()) continue;
+          var o = { name: s.name.trim(), purchaseCash: Math.round(s.purchaseCash * 100) / 100, split: live[i].split, note: s.note.trim(), capital: Math.round(live[i].capital * 100) / 100 };
+          if (!s.auto && s.orig && s.orig.splitMode !== 'auto' && Math.abs(pctTxtN(s.orig.split) - pctTxtN(s.split)) < 1e-9) o.split = Number(s.orig.split);
+          if (s.auto) o.splitMode = 'auto';
+          sp += o.split; out.push(o);
+        }
+        if (!out.length) return { error: 'Add at least one partner.' };
+        if (Math.abs(sp - 1) > 0.0001) return { error: 'The profit/loss splits add up to ' + pctTxt(sp) + '. They must total 100%.' };
+        return { rows: out };
+      }
+    };
+  }
+  function pctTxtN(v) { return Math.round(Number(v) * 10000) / 100; }
+  function sameRows(a, b) {
+    var k = function (r) { return r.map(function (x) { return [x.name, Math.round(Number(x.purchaseCash != null ? x.purchaseCash : x.capital) * 100), x.splitMode === 'auto' ? 'a' : pctTxtN(x.split), x.note || ''].join('|'); }).join('\n'); };
+    return k(a) === k(b);
+  }
+  function withMeta(f, rows) { var pm = (f.investors || []).filter(function (i) { return i && i.payout; })[0]; return pm ? rows.concat([{ payout: { source: pm.payout.source || '' } }]) : rows; }
+  /** Required partners popup (moving a flip to In Escrow, or turning an estimate into a flip). Names first; % auto. */
+  function partnersPrompt(f, title, okLabel, onDone, onCancel) {
+    var rows = partnerRowsOf(f);
+    modal('<h2>' + esc(title) + '</h2><p class="sub2">' + esc(f.address || '') + '</p><div class="field"><label>Partners</label>' + partnersHtml(rows, { namesOnly: true }) + '</div>' +
+      '<div class="row"><button class="btn gold" id="ok">' + esc(okLabel) + '</button>' + (onCancel ? '<button class="btn" id="cx">Cancel</button>' : '') + '</div>', function (m) {
+      m.onclick = null;   // required: tapping outside does not close it
+      var P = bindPartners(m.querySelector('.prt'), rows, f.ledger, { namesOnly: true });
+      var cx = document.getElementById('cx'); if (cx) cx.onclick = function () { closeModal(); onCancel(); };
+      document.getElementById('ok').onclick = function () {
+        var r = P.read(); if (r.error) return toast(r.error, true);
+        var b = this; b.disabled = true;
+        var send = sameRows(rows, r.rows) ? Promise.resolve() : api('updateFlip', { id: f.id, flip: { investors: withMeta(f, r.rows) } });
+        send.then(function () { closeModal(); S.flips = null; onDone(); }).catch(function (e) { fail(e); b.disabled = false; });
+      };
+    });
+  }
+
   function editFlip(f, kind) {
     var isNew = !f; f = f || { investors: [], kind: kind || 'flip' };
     var hold = isHolding(f), FIELDS = hold ? HOLD_FIELDS : FLIP_FIELDS, SL = statusesOf(f);
-    var led = !isNew && !!f.ledger && isOwner();
-    var invRows = (f.investors || []).filter(function (i) { return !i.payout && !i.meta; });
-    var linked = isNew || !invRows.length || invRows.every(function (i) { return i.purchaseCash != null; });
-    var inv = invRows.map(function (i) { return invLine(i, linked); }).join('\n');
-    var payers = ['Escrow (at sale)'].concat(invRows.map(function (i) { return i.name; })).concat(['LANA HOMES LLC', 'Not recorded']);
+    var own = isOwner(), led = !isNew && !!f.ledger;
+    var g = led ? C.live(f) : f;   // every computed box reads the live calculation, never the stored cells
+    var rows = partnerRowsOf(g);
+    var payers = ['Escrow (at sale)'].concat(rows.map(function (i) { return i.name; })).concat(['LANA HOMES LLC', 'Not recorded']);
+    var cashIn = led ? g.cashInvested : null;
     modal('<h2>' + (isNew ? (hold ? 'New Holding' : 'New Flip') : 'Edit ' + esc(f.address)) + '</h2><div class="calcgrid">' + FIELDS.map(function (x) {
-      var k = x[0], ro = k === 'cashInvested' && (led || linked && !isNew), der = led && DERIVED[k];
-      var lab = x[1] + (der ? info('Total of this property’s expense entries. Type a new total and the difference is saved as an adjustment entry.') : '') + (ro ? info('Each partner’s purchase cash plus the expenses they paid') : '');
-      return '<div class="field"><label>' + lab + '</label><input data-k="' + k + '" type="' + (x[2] === 'date' ? 'date' : 'text') + '" ' + (x[2] === 'num' ? 'inputmode="decimal"' : '') + (ro ? ' readonly tabindex="-1" class="ro"' : '') + ' value="' + esc(f[k] == null ? '' : f[k]) + '"></div>';
-    }).join('') + '</div>' + (isNew ? '<div class="field"><label>Status</label><select id="nst">' + SL.map(function (s) { return '<option' + (s === (hold ? 'Owned' : 'Active') ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select></div>' : '') +
-      (led ? '<div class="field"><label>If You Change A Cost Above, Who Paid The Difference</label><select id="adjp">' + payers.map(function (p) { return '<option>' + esc(p) + '</option>'; }).join('') + '</select></div>' : '') +
-      '<div class="field"><label>' + (hold ? 'Partners' : 'Investors') + info('One per line: ' + (linked ? 'Name | Purchase Cash | Split % | Note. Capital = purchase cash + the expenses each partner paid.' : 'Name | Capital | Split %')) + '</label><textarea id="invs" rows="3">' + esc(inv) + '</textarea></div>' +
-      '<div class="field"><label>Notes</label><textarea data-k="notes" rows="3">' + esc(f.notes || '') + '</textarea></div><div class="row"><button class="btn gold" id="ok">Save</button><button class="btn" id="cx">Cancel</button></div>', function () {
+      var k = x[0], der = led && DERIVED[k], ro = der && !own, v = der ? g[k] : f[k];
+      if (x[2] === 'num' && v !== '' && v != null) v = m2(v);
+      var lab = x[1] + (der ? info(own ? 'Total of this property’s expense entries. Type a new total and the difference is saved as an adjustment entry.' : 'Total of this property’s expense entries') : '');
+      return '<div class="field"><label>' + lab + '</label><input data-k="' + k + '" type="' + (x[2] === 'date' ? 'date' : 'text') + '" ' + (x[2] === 'num' ? 'inputmode="decimal"' : '') + (ro ? ' readonly tabindex="-1" class="ro"' : '') + ' value="' + esc(v == null ? '' : v) + '"></div>';
+    }).join('') + (led ? '<div class="field"><label>Cash Invested' + info('Each partner’s purchase cash plus the expenses they paid, live from the expense entries') + '</label><input class="ro" readonly tabindex="-1" value="' + esc(m2(cashIn)) + '"></div>' : '') + '</div>' +
+      (isNew ? '<div class="field"><label>Status</label><select id="nst">' + SL.map(function (s) { return '<option' + (s === (hold ? 'Owned' : 'Active') ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select></div>' : '') +
+      (led && own ? '<div class="field"><label>Who Paid A Cost Change' + info('If you change a cost total above, the difference is saved as an expense entry paid by this person') + '</label><select id="adjp">' + payers.map(function (p) { return '<option>' + esc(p) + '</option>'; }).join('') + '</select></div>' : '') +
+      '<div class="field"><label>Partners</label>' + partnersHtml(rows) + '</div>' +
+      '<div class="row"><button class="btn gold" id="ok">Save</button><button class="btn" id="cx">Cancel</button></div>', function (m) {
+      var P = bindPartners(m.querySelector('.prt'), rows, g.ledger);
       document.getElementById('cx').onclick = closeModal;
       document.getElementById('ok').onclick = function () {
         var btn = this, body = {}; document.querySelectorAll('#modal [data-k]').forEach(function (el) { if (!el.readOnly) body[el.dataset.k] = el.value; });
+        Object.keys(body).forEach(function (k) { if (/^\$|^−\$|^-\$/.test(body[k])) body[k] = String(C.n(String(body[k]).replace('−', '-'))); });
         var adj = [];
-        if (led) Object.keys(DERIVED).forEach(function (k) {
+        if (led && own) Object.keys(DERIVED).forEach(function (k) {
           if (!body.hasOwnProperty(k)) return;
-          var d = Math.round((C.n(body[k]) - C.n(f[k])) * 100) / 100;
+          var d = Math.round((C.n(body[k]) - C.n(g[k])) * 100) / 100;
           if (Math.abs(d) >= 0.01) adj.push({ k: k, phase: DERIVED[k], amount: d });
         });
-        var invTxt = document.getElementById('invs').value, sendInv = isNew || invTxt.trim() !== inv.trim();
-        var go = sendInv && !isNew && linked ? serverVersion().then(function (v) { if (!verAtLeast(v, '1.4.0')) throw new Error('Partner purchase cash can be saved once the backend update (1.4.0) is deployed. Your other changes were not saved.'); }) : Promise.resolve();
-        if (sendInv) body.investors = invTxt.split('\n').map(function (l) {
-          var p = l.split('|').map(function (s) { return s.trim(); });
-          if (!p[0]) return null;
-          return linked ? { name: p[0], purchaseCash: C.n(p[1]), split: C.n(p[2]) / 100, note: p.slice(3).join(' | '), capital: C.n(p[1]) } : { name: p[0], capital: C.n(p[1]), split: C.n(p[2]) / 100 };
-        }).filter(Boolean);
-        if (body.investors) { var pm = (f.investors || []).filter(function (i) { return i.payout; })[0]; if (pm) body.investors.push({ payout: { source: pm.payout.source || '' } }); }
+        Object.keys(DERIVED).forEach(function (k) { if (led) delete body[k]; });
+        var pr = P.read(); if (pr.error) return toast(pr.error, true);
+        if (isNew || !sameRows(rows, pr.rows)) body.investors = withMeta(f, pr.rows);
         var nst = document.getElementById('nst'); if (nst) body.status = nst.value;
         if (isNew) body.kind = hold ? 'holding' : 'flip';
-        var payer = led ? document.getElementById('adjp').value : '';
+        var payer = led && own ? document.getElementById('adjp').value : '';
         var atSale = /at sale/i.test(payer), sold = f.status === 'Sold';
         btn.disabled = true;
-        go.then(function () {
-          // 1. the adjustment entries (the source), 2. the property settings plus a snapshot of the new totals
-          return adj.reduce(function (pr, a) {
-            return pr.then(function () {
-              var label = { Buying: 'Buying Closing Costs', Rehab: 'Rehab', Holding: 'Holding Costs', Selling: 'Selling Costs', 'After Sale': 'After-Sale Costs' }[a.phase];
-              var e = { date: atSale ? (sold ? f.saleDate || '' : '') : todayISO(), payee: 'Adjustment — ' + label, category: a.phase === 'Holding' ? 'Loan Interest' : a.phase === 'Selling' ? 'Closing Costs' : 'Other',
-                amount: a.amount, method: atSale ? 'Escrow' : '', paidBy: payer === 'Not recorded' ? '' : payer, phase: a.phase, atSale: atSale ? '1' : '0',
-                notes: 'Entered as a ' + label + ' total in Edit Numbers', linkType: 'flip', linkId: f.id };
-              e.notes = tagNotes(e.paidBy, a.phase, atSale, e.notes);
-              return api('saveExpense', { expense: e });
-            });
-          }, Promise.resolve());
-        }).then(function () {
-          if (led) adj.forEach(function (a) { body[a.k] = C.n(body[a.k]); });
+        adj.reduce(function (p0, a) {
+          return p0.then(function () {
+            var label = { Buying: 'Buying Closing Costs', Rehab: 'Rehab', Holding: 'Holding Costs', Selling: 'Selling Costs', 'After Sale': 'After-Sale Costs' }[a.phase];
+            var e = { date: atSale ? (sold ? f.saleDate || '' : '') : todayISO(), payee: 'Adjustment — ' + label, category: a.phase === 'Holding' ? 'Loan Interest' : a.phase === 'Selling' ? 'Closing Costs' : 'Other',
+              amount: a.amount, method: atSale ? 'Escrow' : '', paidBy: payer === 'Not recorded' ? '' : payer, phase: a.phase, atSale: atSale ? '1' : '0',
+              notes: 'Entered as a ' + label + ' total in Edit Numbers', linkType: 'flip', linkId: f.id };
+            e.notes = tagNotes(e.paidBy, a.phase, atSale, e.notes);
+            return api('saveExpense', { expense: e });
+          });
+        }, Promise.resolve()).then(function () {
           return isNew ? api('createFlip', { flip: body }) : api('updateFlip', { id: f.id, flip: body });
         }).then(function (r) { expensesChanged(); closeModal(); toast(adj.length ? 'Saved. ' + adj.length + ' adjustment entr' + (adj.length === 1 ? 'y' : 'ies') + ' added to Expenses.' : 'Saved.'); location.hash = '#/flip/' + r.id; if (!isNew) viewFlip(r.id); })
           .catch(fail).then(function () { btn.disabled = false; });
@@ -756,7 +856,10 @@
       document.getElementById('addi').onclick = function () { var a = document.getElementById('addinv'); if (a) { a.scrollIntoView({ behavior: 'smooth' }); a.click(); } };
       document.getElementById('del').onclick = function () { confirmBox('Delete Estimate', '<p>This deletes the estimate and its inventory needs list.</p>', 'Delete', function () { api('deleteEstimate', { id: est.id }).then(function () { toast('Deleted.'); location.hash = '#/estimates'; }).catch(fail); }); };
       var cv = document.getElementById('conv');
-      if (cv) cv.onclick = function () { confirmBox('Turn Into Active Flip', '<p>This creates a new Active flip from this estimate (with its inventory needs list). The person who made the estimate is added as a Member.</p>', 'Create Flip', function () { api('convertEstimate', { id: est.id }).then(function (f) { S.flips = null; toast('Flip created.'); location.hash = '#/flip/' + f.id; }).catch(fail); }); };
+      if (cv) cv.onclick = function () { confirmBox('Turn Into Active Flip', '<p>This creates a new Active flip from this estimate (with its inventory needs list). The person who made the estimate is added as a Member.</p>', 'Create Flip', function () { api('convertEstimate', { id: est.id }).then(function (f) {
+          S.flips = null; f.ledger = f.ledger || C.ledger([]);
+          partnersPrompt(f, 'Who Are The Partners?', 'Save Partners', function () { toast('Flip created.'); location.hash = '#/flip/' + f.id; });
+        }).catch(fail); }); };
     }
   }
   function sPctTxt(v) { return v == null || !isFinite(v) ? '—' : (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v * 100).toFixed(1) + '%'; }
@@ -878,7 +981,7 @@
     TIPS = { f: f, edit: isOwner() && !!sessionStorage.getItem('fl_tipedit') };
     var x = C.holding(f), can = f.canManage;
     var ln = function (k, v, cls) { return '<div class="ln' + (cls ? ' ' + cls : '') + '"><span>' + k + info('', 'ln:' + plain(k)) + '</span><span class="num">' + v + '</span></div>'; };
-    var html = '<p class="meta"><a href="#/holdings">← Holdings</a></p><div class="spread"><div><h1>' + esc(f.address) + '</h1><p class="lead">' + esc(f.city) + (f.partners ? ' · ' + esc(f.partners) : '') + '</p></div><div class="row">' +
+    var html = '<p class="meta"><a href="#/holdings">← Holdings</a></p><div class="spread"><div><h1>' + esc(f.address) + '</h1><p class="lead">' + esc(f.city) + info(f.partners || '', 'h:Partners') + '</p></div><div class="row">' +
       (can ? '<select id="st" class="btn" aria-label="Status">' + HSTATUSES.map(function (s) { return '<option' + (s === f.status ? ' selected' : '') + '>' + s + '</option>'; }).join('') + '</select>' : '<span class="pill">' + esc(f.status) + '</span>') +
       tipToggle() + '<button class="btn" id="pdf" type="button">PDF Report</button>' + (can ? '<button class="btn gold" id="ed">Edit Numbers</button>' : '') + '</div></div>';
     html += '<div class="grid g4" style="margin-top:4px">' +
@@ -886,14 +989,14 @@
       kpi('Monthly Cash Flow', x.hasIncome ? sMoney(x.monthlyCashFlow, 0) : '<span class="pill warn">Needs Data</span>', x.hasIncome ? money(x.noi, 0) + ' annual NOI' : (x.rent ? money(x.rent, 0) + ' rent; add monthly expenses' : 'Add rent and monthly expenses')) +
       kpi('Cash-On-Cash', x.hasIncome ? sPct(x.cashOnCash) : '—', 'Annual cash flow ÷ cash in') +
       kpi('Total Return', sPct(x.totalRoi), 'Equity gain plus a year of cash flow') + '</div>';
-    html += '<div class="grid g2" style="margin-top:22px"><div class="card rule"><h2>The Numbers</h2><div class="lines">' +
+    html += '<div class="grid g2" style="margin-top:22px"><div class="card rule"><h2>The Numbers' + info(f.notes || '', 'h:Notes') + '</h2><div class="lines">' +
       ln('Purchase Price', money(f.purchasePrice)) + ln('Closing Costs', money(f.buyClosingCosts)) + ln('Improvements Spent', money(f.rehabSpent)) + ln('All-In Cost', money(x.allIn), 'tot') +
       ln('Original Loan' + (f.lender ? ' · ' + esc(f.lender) : ''), money(f.loanAmount)) + ln('Current Loan Balance', money(x.loanBalance)) + ln('Cash Invested', money(x.cashInvested), 'tot') +
       ln('Current Value', x.value ? money(x.value) : '<span class="pill warn">Needs Value</span>') + ln('Equity', sMoney(x.equity), 'tot') +
       ln('Monthly Rent', x.rent ? money(x.rent) : '<span class="pill warn">Needs Data</span>') + ln('Monthly Expenses', x.expenses ? money(x.expenses) : '<span class="pill warn">Needs Data</span>') + ln('Monthly Cash Flow', x.hasIncome ? sMoney(x.monthlyCashFlow) : '<span class="pill warn">Needs Data</span>', 'tot') + (x.hasIncome ? ln('Annual NOI (No Mortgage)', sMoney(x.noi), 'tot') : '') + (depositsHeld(f) ? ln('Security Deposits Held (Owed To Tenants)', money(depositsHeld(f))) : '') + '</div></div>' +
       '<div class="card rule"><h2>Return</h2><div style="display:flex;justify-content:center;gap:18px;margin-top:10px">' +
       donut(x.equityRoi || 0, 1, pct(x.equityRoi, 0), 'Equity Gain', x.equityRoi == null ? 'gold' : (x.equityRoi >= 0 ? 'good' : 'bad')) + donut(x.cashOnCash || 0, 0.2, x.hasIncome ? pct(x.cashOnCash, 1) : '—', 'Cash-On-Cash', 'gold') + '</div>' +
-      '<hr class="sep"><div class="mini"><div>Purchased<b>' + (fmtDate(f.purchaseDate) || '<span class="pill warn">Needs Date</span>') + '</b></div><div>Months Held<b>' + (x.monthsHeld == null ? '—' : x.monthsHeld) + '</b></div><div>Value Vs All-In<b>' + sMoney(x.value ? x.value - x.allIn : 0, 0) + '</b></div></div></div></div>';
+      '<hr class="sep"><div class="mini"><div>Purchased' + info(f.datesNote || '', 'h:Dates') + '<b>' + (fmtDate(f.purchaseDate) || '<span class="pill warn">Needs Date</span>') + '</b></div><div>Months Held<b>' + (x.monthsHeld == null ? '—' : x.monthsHeld) + '</b></div><div>Value Vs All-In<b>' + sMoney(x.value ? x.value - x.allIn : 0, 0) + '</b></div></div></div></div>';
     if (isOwner()) html += '<div class="label">Expenses</div><div id="proex"></div>';
     html += '<div class="label">Inventory Needs List</div><div id="invlist"></div>';
     html += '<div class="label">Internal Notes</div><div id="tnotes"></div>';

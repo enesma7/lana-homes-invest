@@ -155,7 +155,7 @@
     rows.push(['Total Cost', money(x.totalCost), true], [sold ? 'Sale Price' : 'Projected Sale Price', money(f.salePrice), true], [sold ? 'Profit' : 'Projected Profit', money(x.profit), true, x.profit < 0 ? 'bad' : '']);
     R.lines(rows);
     R.note('Purchased ' + (fdate(f.purchaseDate) || '(needs date)') + (sold ? ' · Sold ' + (fdate(f.saleDate) || '(needs date)') : '') + '');
-    if (x.investors && x.investors.length) { R.section('Investors'); R.table(['Investor', 'Capital', 'Split', 'Profit Share', 'Payout'], x.investors.map(function (i) { return [i.name, money(i.capital, 0), pct(i.split, 1), money(i.profitShare, 0), money(i.distribution, 0)]; }), { columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right', fontStyle: 'bold' } } }); }
+    if (x.investors && x.investors.length) { R.section('Partners'); R.table(['Partner', 'Capital', 'Split', 'Profit Share', 'Payout'], x.investors.map(function (i) { return [i.name, money(i.capital, 0), pct(i.split, 1), money(i.profitShare, 0), money(i.distribution, 0)]; }), { columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right', fontStyle: 'bold' } } }); }
     payoutSection(R, x.payout);
     expensesSection(R, d.expenses);
 
