@@ -520,6 +520,187 @@
     if (thenFn) whenFlipRendered(thenFn);
     viewFlip(id);
   }
+
+  function sellingCostsPrompt(f, onSave, onCancel) {
+    var lines = C.SALE_CLOSING_LINES.map(function (l) { return { key: l.key, label: l.label, pct: !!l.pct, pctVal: '', amount: '' }; });
+    var misc = [];
+    var loans = [f.loanAmount ? String(f.loanAmount) : ''];
+    var recorded = C.n(f.sellingCosts);
+    var escListener = null;
+    var cancel = function () {
+      if (escListener) document.removeEventListener('keydown', escListener);
+      escListener = null;
+      closeModal();
+      if (onCancel) onCancel();
+    };
+    modal(
+      '<div class="sellclose"><h2>Selling Costs</h2>' +
+      '<div class="grid g2">' +
+        '<div class="field"><label>Sale Price</label><input id="sc-sp" inputmode="decimal" value="' + esc(f.salePrice != null && f.salePrice !== '' ? m2(f.salePrice) : '') + '"></div>' +
+        '<div class="field"><label>Close Date</label><input type="date" id="sc-sd" value="' + esc(f.saleDate || todayISO()) + '"></div>' +
+      '</div>' +
+      '<div class="label">Loan Payoff' + info('The amount paid off at closing. This updates the loan, not selling costs.', 'sc:LoanPayoff') + '</div>' +
+      '<div id="sc-loans"></div><button type="button" class="btn sm" id="sc-addloan">Add Loan Payoff</button>' +
+      '<div class="label">Selling Costs</div>' +
+      '<div id="sc-lines"></div>' +
+      '<div id="sc-misc"></div>' +
+      '<button type="button" class="btn sm" id="sc-addmisc">Add Misc Item</button>' +
+      '<div class="sctot" id="sc-tot"></div>' +
+      '<div class="row" style="margin-top:16px"><button type="button" class="btn gold" id="sc-ok">Save And Mark Sold</button><button type="button" class="btn" id="sc-cx">Cancel</button></div></div>',
+      function (m) {
+        m.onclick = function (e) { if (e.target === m) cancel(); };
+        function saleVal() {
+          var raw = m.querySelector('#sc-sp').value;
+          return raw === '' ? 0 : C.n(String(raw).replace('−', '-'));
+        }
+        function renderLoans() {
+          var box = m.querySelector('#sc-loans');
+          box.innerHTML = loans.map(function (v, i) {
+            return '<div class="cline"><label>Loan Payoff' + (loans.length > 1 ? ' ' + (i + 1) : '') + '</label>' +
+              '<input inputmode="decimal" data-loan="' + i + '" value="' + esc(v) + '" placeholder="0.00" aria-label="Loan payoff amount">' +
+              (loans.length > 1 ? '<button type="button" class="btn sm" data-rmloan="' + i + '" aria-label="Remove loan payoff">Remove</button>' : '') +
+              '</div>';
+          }).join('');
+          box.querySelectorAll('[data-loan]').forEach(function (el) {
+            el.oninput = function () { loans[+el.getAttribute('data-loan')] = el.value; total(); };
+          });
+          box.querySelectorAll('[data-rmloan]').forEach(function (b) {
+            b.onclick = function () { loans.splice(+b.getAttribute('data-rmloan'), 1); if (!loans.length) loans.push(''); renderLoans(); total(); };
+          });
+        }
+        function renderLines() {
+          var box = m.querySelector('#sc-lines');
+          box.innerHTML = lines.map(function (l, i) {
+            return '<div class="cline"><label>' + esc(l.label) + '</label>' +
+              (l.pct ? '<input inputmode="decimal" class="scpct" data-pct="' + i + '" value="' + esc(l.pctVal) + '" placeholder="%" aria-label="' + esc(l.label) + ' percent">' : '') +
+              '<input inputmode="decimal" data-amt="' + i + '" value="' + esc(l.amount) + '" placeholder="0.00" aria-label="' + esc(l.label) + ' amount"></div>';
+          }).join('');
+          box.querySelectorAll('[data-amt]').forEach(function (el) {
+            el.oninput = function () { lines[+el.getAttribute('data-amt')].amount = el.value; total(); };
+          });
+          box.querySelectorAll('[data-pct]').forEach(function (el) {
+            el.oninput = function () {
+              var i = +el.getAttribute('data-pct');
+              lines[i].pctVal = el.value;
+              if (el.value !== '') {
+                lines[i].amount = String(Math.round(saleVal() * C.n(el.value) / 100 * 100) / 100);
+                var a = box.querySelector('[data-amt="' + i + '"]');
+                if (a) a.value = lines[i].amount;
+              }
+              total();
+            };
+          });
+        }
+        function renderMisc() {
+          var box = m.querySelector('#sc-misc');
+          box.innerHTML = misc.map(function (l, i) {
+            return '<div class="cline"><input type="text" data-mname="' + i + '" value="' + esc(l.label) + '" placeholder="Item name" aria-label="Misc item name">' +
+              '<input inputmode="decimal" data-mamt="' + i + '" value="' + esc(l.amount) + '" placeholder="0.00" aria-label="Misc item amount">' +
+              '<button type="button" class="btn sm" data-rmmisc="' + i + '" aria-label="Remove misc item">Remove</button></div>';
+          }).join('');
+          box.querySelectorAll('[data-mname]').forEach(function (el) {
+            el.oninput = function () { misc[+el.getAttribute('data-mname')].label = el.value; };
+          });
+          box.querySelectorAll('[data-mamt]').forEach(function (el) {
+            el.oninput = function () { misc[+el.getAttribute('data-mamt')].amount = el.value; total(); };
+          });
+          box.querySelectorAll('[data-rmmisc]').forEach(function (b) {
+            b.onclick = function () { misc.splice(+b.getAttribute('data-rmmisc'), 1); renderMisc(); total(); };
+          });
+        }
+        function readPrice() {
+          var raw = m.querySelector('#sc-sp').value;
+          if (raw === '') return null;
+          return C.n(String(raw).replace('−', '-'));
+        }
+        function payload() {
+          var price = readPrice();
+          return C.saleClosingOf({
+            salePrice: price == null ? '' : price,
+            saleDate: m.querySelector('#sc-sd').value,
+            lines: lines.concat(misc).map(function (l) { return { label: l.label, amount: l.amount }; }),
+            loanPayoffs: loans.slice(),
+            recordedSelling: recorded,
+            loanAmount: f.loanAmount
+          });
+        }
+        function total() {
+          var p = payload();
+          var html = '<div class="ln"><span>Selling Costs</span><span class="num">' + money(p.sellingTotal) + '</span></div>';
+          if (p.recordedSelling) {
+            html += '<div class="ln"><span>Already Recorded</span><span class="num">' + money(p.recordedSelling) + '</span></div>' +
+              '<div class="ln tot"><span>Total Selling Costs</span><span class="num">' + money(p.sellingCombined) + '</span></div>';
+          }
+          html += '<div class="ln"><span>Loan Payoff</span><span class="num">' + money(p.loanPayoff) + '</span></div>';
+          m.querySelector('#sc-tot').innerHTML = html;
+        }
+        m.querySelector('#sc-sp').oninput = function () {
+          lines.forEach(function (l, i) {
+            if (!l.pct || l.pctVal === '') return;
+            l.amount = String(Math.round(saleVal() * C.n(l.pctVal) / 100 * 100) / 100);
+            var a = m.querySelector('#sc-lines [data-amt="' + i + '"]');
+            if (a) a.value = l.amount;
+          });
+          total();
+        };
+        m.querySelector('#sc-addloan').onclick = function () { loans.push(''); renderLoans(); };
+        m.querySelector('#sc-addmisc').onclick = function () { misc.push({ label: '', amount: '' }); renderMisc(); };
+        m.querySelector('#sc-cx').onclick = cancel;
+        m.querySelector('#sc-ok').onclick = function () {
+          var missing = misc.some(function (l) { return C.n(l.amount) && !String(l.label || '').trim(); });
+          if (missing) { toast('Add a name for each misc item.', true); return; }
+          var p = payload();
+          p.salePrice = readPrice();
+          if (escListener) document.removeEventListener('keydown', escListener);
+          escListener = null;
+          closeModal();
+          onSave(p);
+        };
+        escListener = function (ev) { if (ev.key === 'Escape') cancel(); };
+        document.addEventListener('keydown', escListener);
+        renderLoans(); renderLines(); renderMisc(); total();
+      }
+    );
+  }
+  function saveSaleClosing(f, data, thenOk, thenErr) {
+    var body = { id: f.id, saleDate: data.saleDate || '', costs: data.costs || [] };
+    if (data.salePrice != null && data.salePrice !== '') body.salePrice = data.salePrice;
+    if (data.hasLoanPayoff) body.loanAmount = data.loanPayoff;
+    var overlay = { status: 'Sold' };
+    if (data.saleDate) overlay.saleDate = data.saleDate;
+    if (data.salePrice != null && data.salePrice !== '') overlay.salePrice = data.salePrice;
+    if (data.hasLoanPayoff) overlay.loanAmount = data.loanPayoff;
+    var finish = function () {
+      toast('Status set to Sold. Moved to the Archive.');
+      expensesChanged();
+      viewFlip(f.id, overlay);
+      if (thenOk) thenOk();
+    };
+    var fallback = function () {
+      var chain = Promise.resolve();
+      (data.costs || []).forEach(function (c) {
+        chain = chain.then(function () {
+          return api('saveExpense', { expense: {
+            date: data.saleDate || todayISO(), payee: c.payee, category: c.category || 'Closing Costs',
+            amount: c.amount, method: 'Escrow', paidBy: 'Escrow (sale proceeds)', phase: 'Selling',
+            atSale: true, linkType: 'flip', linkId: f.id
+          } });
+        });
+      });
+      var patch = { };
+      if (data.salePrice != null && data.salePrice !== '') patch.salePrice = data.salePrice;
+      if (data.hasLoanPayoff) patch.loanAmount = data.loanPayoff;
+      return chain
+        .then(function () { return Object.keys(patch).length ? api('updateFlip', { id: f.id, flip: patch }) : null; })
+        .then(function () { return api('setStatus', { id: f.id, status: 'Sold', saleDate: data.saleDate || '' }); })
+        .then(finish);
+    };
+    return api('closeEscrow', body).then(finish).catch(function (e) {
+      if (e && e.code === 'BAD_REQUEST' && /Unknown action/i.test(e.message)) return fallback().catch(thenErr);
+      if (thenErr) thenErr(e);
+    });
+  }
+
   function viewFlip(id, overlay) {
     loading();
     getFlipLive(id).then(function (f) {
@@ -590,6 +771,10 @@
         };
         if (s === 'In Escrow' && f.status !== 'In Escrow' && can) {
           partnersPrompt(f, 'Who Are The Partners?', 'Save And Move To In Escrow', function () { go(); }, function () { st.value = f.status; });
+        } else if (s === 'Sold' && f.status === 'In Escrow' && isOwner()) {
+          sellingCostsPrompt(f, function (data) {
+            saveSaleClosing(f, data, null, function (e) { fail(e); st.value = f.status; });
+          }, function () { st.value = f.status; });
         } else if (s === 'Sold') {
           modal('<h2>Mark As Sold</h2><p class="sub2">Sold flips move to the Archive. Add the sale close date and confirm the sale price. You can leave the date blank to flag it as Needs Date.</p><div class="field"><label>Sale Close Date</label><input type="date" id="sd" value="' + esc(f.saleDate || '') + '"></div><div class="field"><label>Sale Price</label><input id="sp" inputmode="decimal" value="' + esc(f.salePrice != null && f.salePrice !== '' ? m2(f.salePrice) : '') + '"></div><div class="row"><button type="button" class="btn gold" id="sold-ok">Mark Sold</button><button type="button" class="btn" id="sold-cx">Cancel</button></div>', function (m) {
             m.querySelector('#sold-ok').onclick = function () {

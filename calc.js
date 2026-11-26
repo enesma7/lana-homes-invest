@@ -566,6 +566,63 @@
     };
   }
 
-  var api = { splitsOf: splitsOf, ledgerSum: ledgerSum, payerMatches: ledgerPayerMatches, estimate: estimate, flip: flip, holding: holding, holdingTaxYears: holdingTaxYears, holdingClassOf: holdingClassOf, unitsOf: unitsOf, depositsOf: depositsOf, earliestStart: earliestStart, monthlyRentOf: monthlyRentOf, live: ledgerLive, ledger: ledger, ledgers: ledgers, phaseOf: ledgerPhase, atSaleOf: ledgerAtSale, payerOf: ledgerPayer, PHASES: LEDGER_PHASES, DEAL_PHASES: LEDGER_DEAL, daysBetween: daysBetween, monthsBetween: monthsBetween, annualize: annualize, n: n, downPayment: downPayment, cashToPurchase: cashToPurchase, afterSaleNotAtSale: afterSaleNotAtSale, purchaseCreditsOf: purchaseCreditsOf, sellerCarryPayoffReductionOf: sellerCarryPayoffReductionOf, parseOverrides: parseOverrides, applyOverrides: applyOverrides };
+
+  /** Standard CA seller closing-cost lines for the In Escrow → Sold modal. Loan payoffs are separate (they update the loan, not selling costs). */
+  var SALE_CLOSING_LINES = [
+    { key: 'listingCommission', label: 'Listing Commission', pct: true },
+    { key: 'buyerCommission', label: 'Buyer Commission', pct: true },
+    { key: 'escrowFee', label: 'Escrow Fee' },
+    { key: 'ownersTitle', label: "Owner's Title Policy" },
+    { key: 'countyTransferTax', label: 'County Transfer Tax' },
+    { key: 'cityTransferTax', label: 'City Transfer Tax' },
+    { key: 'recording', label: 'Recording' },
+    { key: 'notary', label: 'Notary' },
+    { key: 'hoaFees', label: 'HOA Fees' },
+    { key: 'taxProration', label: 'Property Tax Proration' },
+    { key: 'nhd', label: 'Natural Hazard Disclosure' },
+    { key: 'homeWarranty', label: 'Home Warranty' },
+    { key: 'buyerCredits', label: 'Buyer Credits' },
+    { key: 'termiteRepairs', label: 'Termite / Repairs' },
+    { key: 'wireCourier', label: 'Wire / Courier' }
+  ];
+  /**
+   * Display/payload helper for the Selling Costs modal. Does not change flip math.
+   * Zero amounts are omitted. Negative amounts (for example a tax proration credit) are kept.
+   * Loan payoffs are returned separately so they are not written as Selling expenses.
+   */
+  function saleClosingOf(input) {
+    input = input || {};
+    var sale = n(input.salePrice);
+    var costs = [];
+    (input.lines || []).forEach(function (l) {
+      var label = String((l && l.label) || '').trim();
+      var raw = l && l.amount;
+      if (raw === '' || raw == null) return;
+      var amount = r2(n(raw));
+      if (!label || !amount) return;
+      costs.push({
+        payee: label, amount: amount, category: 'Closing Costs',
+        phase: 'Selling', atSale: true, paidBy: 'Escrow (sale proceeds)', method: 'Escrow'
+      });
+    });
+    var sellingTotal = r2(costs.reduce(function (t, l) { return t + l.amount; }, 0));
+    var recorded = r2(n(input.recordedSelling));
+    var payoffInputs = input.loanPayoffs || [];
+    var hasLoanPayoff = payoffInputs.some(function (v) { return v !== '' && v != null; });
+    var loanPayoff = r2(payoffInputs.reduce(function (t, v) { return t + (v === '' || v == null ? 0 : n(v)); }, 0));
+    if (!hasLoanPayoff) loanPayoff = r2(n(input.loanAmount));
+    return {
+      salePrice: sale,
+      saleDate: String(input.saleDate || ''),
+      costs: costs,
+      sellingTotal: sellingTotal,
+      recordedSelling: recorded,
+      sellingCombined: r2(sellingTotal + recorded),
+      loanPayoff: loanPayoff,
+      hasLoanPayoff: hasLoanPayoff
+    };
+  }
+
+  var api = { splitsOf: splitsOf, ledgerSum: ledgerSum, payerMatches: ledgerPayerMatches, estimate: estimate, flip: flip, holding: holding, holdingTaxYears: holdingTaxYears, holdingClassOf: holdingClassOf, unitsOf: unitsOf, depositsOf: depositsOf, earliestStart: earliestStart, monthlyRentOf: monthlyRentOf, live: ledgerLive, ledger: ledger, ledgers: ledgers, phaseOf: ledgerPhase, atSaleOf: ledgerAtSale, payerOf: ledgerPayer, PHASES: LEDGER_PHASES, DEAL_PHASES: LEDGER_DEAL, daysBetween: daysBetween, monthsBetween: monthsBetween, annualize: annualize, n: n, downPayment: downPayment, cashToPurchase: cashToPurchase, afterSaleNotAtSale: afterSaleNotAtSale, purchaseCreditsOf: purchaseCreditsOf, sellerCarryPayoffReductionOf: sellerCarryPayoffReductionOf, saleClosingOf: saleClosingOf, SALE_CLOSING_LINES: SALE_CLOSING_LINES, parseOverrides: parseOverrides, applyOverrides: applyOverrides };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.FlipCalc = api;
 })(this);

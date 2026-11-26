@@ -169,6 +169,21 @@ table.t td.r,table.t th.r{text-align:right}
 .modal{position:fixed;inset:0;background:rgba(0,0,7,.42);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);display:flex;align-items:flex-start;justify-content:center;padding:6vh 14px;z-index:50;overflow:auto;animation:fade .2s}
 @keyframes fade{from{opacity:0}}
 .modal .box{background:#fff;border-radius:18px;max-width:640px;width:100%;padding:24px;box-shadow:0 30px 80px -20px rgba(0,0,7,.45);animation:rise .25s var(--ease)}
+
+.sellclose .cline{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.sellclose .cline label,.sellclose .cline input[type="text"]{flex:1;min-width:0}
+.sellclose .cline input[type="text"]{min-height:44px;font-size:16px;border:1px solid var(--line2);border-radius:10px;padding:10px 12px;background:#fff;box-sizing:border-box}
+.sellclose .cline input[inputmode="decimal"],.sellclose .cline input.scpct{min-height:44px;font-size:16px;width:118px;flex:0 0 118px;text-align:right;border:1px solid var(--line2);border-radius:10px;padding:10px 12px;background:#fff;box-sizing:border-box}
+.sellclose .cline input.scpct{flex:0 0 72px;width:72px;text-align:center}
+.sellclose .sctot{margin-top:16px;padding-top:12px;border-top:1px dashed var(--line2)}
+.sellclose #sc-addloan,.sellclose #sc-addmisc{margin:4px 0 14px}
+.sellclose .label{margin-top:10px}
+.sellclose .field input{min-height:44px;font-size:16px}
+@media(max-width:480px){
+ .sellclose .cline{flex-wrap:wrap}
+ .sellclose .cline>label{flex:1 1 100%}
+ .sellclose .cline input[inputmode="decimal"]{flex:1 1 120px}
+}
 .toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:#000007;color:#fff;padding:10px 18px;border-radius:12px;font-size:13.5px;z-index:60;max-width:90vw;box-shadow:0 14px 40px -12px rgba(0,0,7,.6);animation:rise .25s var(--ease)}
 .toast.err{background:#9A0007}
 .seg{display:inline-flex;border:1px solid var(--line2);border-radius:999px;overflow:hidden;background:var(--soft);padding:2px}
