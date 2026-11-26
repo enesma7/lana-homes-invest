@@ -179,6 +179,19 @@
   /** Down payment is the price not funded by the loan. Cash to purchase = that down payment + buying closing costs. */
   function downPayment(f) { return ledgerR2(ledgerNum(f && f.purchasePrice) - ledgerNum(f && f.loanAmount)); }
   function cashToPurchase(f) { return ledgerR2(downPayment(f) + ledgerNum(f && f.buyClosingCosts)); }
+  /** Partner purchase cash already on the ledger (or the stored fallback when no Purchase Cash entries exist yet). */
+  function recordedPurchaseCash(f, L) {
+    if (L && L.purchasePaid && Object.keys(L.purchasePaid).length) {
+      var t = 0, k;
+      for (k in L.purchasePaid) t += ledgerNum(L.purchasePaid[k]);
+      return ledgerR2(t);
+    }
+    var s = 0;
+    ((f && f.investors) || []).forEach(function (i) { if (i && !ledgerSetupRow(i)) s += ledgerNum(i.purchaseCash); });
+    return ledgerR2(s);
+  }
+  /** Cash still needed at purchase: cash to close minus purchase cash already recorded. */
+  function unfundedCashToClose(f, L) { return ledgerR2(cashToPurchase(f) - recordedPurchaseCash(f, L)); }
   /** After-sale costs not paid through the sale escrow. Already in profit (otherCosts); also deducted from Net Proceeds so the two totals tie. */
   function afterSaleNotAtSale(L) {
     if (!L) return 0;
@@ -286,7 +299,12 @@
     var net = r2(sale - loan - L.atSaleTotal + adj - afterOpen - exclude), toPartners = r2(capTotal + x.profit), diff = r2(toPartners - net);
     var shownPc = r2(pc || exclude);
     var saleNote = shownPc ? ('Purchase Credits ' + fmt(shownPc) + ', already counted in cash in (not deducted)') : '';
-    if (Math.abs(diff) >= 0.01) saleRows.push(['Settled Outside The Sale Escrow', diff, 'Costs in the totals not paid by a partner or the sale escrow']);
+    // Only add a reconciling sale line when the amount is a real, identifiable figure (unfunded cash to close).
+    // Do not invent a plug line for an unexplained remainder.
+    var unfunded = unfundedCashToClose(f, L);
+    if (Math.abs(diff) >= 0.01 && Math.abs(r2(diff + unfunded)) < 0.01 && Math.abs(unfunded) >= 0.01) {
+      saleRows.push(['Cash To Close', diff]);
+    }
     var paid = inv.map(function (i) {
       return [i.name, i.distribution, 'Capital ' + fmt(i.capital) + (i.profitShare < 0 ? ' − ' + fmt(-i.profitShare) + ' loss' : ' + ' + fmt(i.profitShare) + ' profit') + ' (' + pct(i.split) + ')'];
     });

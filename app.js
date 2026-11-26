@@ -49,7 +49,22 @@
   function depositsHeld(f) { var fromUnits = C.depositsOf ? C.depositsOf(f) : 0; if (fromUnits) return fromUnits; var m = /Security deposits held: \$([\d,]+(?:\.\d+)?)/i.exec(f && f.notes || ''); return m ? Number(m[1].replace(/,/g, '')) : 0; }
   function soldYear(f) { var m = /Sold (\d{4})\b/.exec(f && f.datesNote || ''); return m ? m[1] : ''; }
   function soldCell(f) { return fmtDate(f.saleDate) || ((soldYear(f) ? soldYear(f) + ' ' : '') + '<span class="pill warn">Needs Date</span>'); }
-  function fmtDate(d) { if (!d) return ''; var p = d.split('-'); return p.length === 3 ? (+p[1]) + '/' + (+p[2]) + '/' + p[0] : d; }
+  function pad2(n) { n = String(n); return n.length < 2 ? '0' + n : n; }
+  function normDate(d) {
+    if (d == null || d === '') return '';
+    if (d instanceof Date && !isNaN(d.getTime())) return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+    var s = String(d).trim(), m;
+    m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return m[1] + '-' + m[2] + '-' + m[3];
+    m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (m) return m[3] + '-' + pad2(m[1]) + '-' + pad2(m[2]);
+    return '';
+  }
+  function fmtDate(d) {
+    var n = normDate(d); if (!n) return '';
+    var p = n.split('-');
+    return (+p[1]) + '/' + (+p[2]) + '/' + p[0];
+  }
   function todayISO() { var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
   function toast(msg, err) { var t = document.getElementById('toast'); t.textContent = msg; t.className = 'toast' + (err ? ' err' : ''); t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(function () { t.hidden = true; }, 3800); }
   function isOwner() { return S.user && S.user.role === 'owner'; }
@@ -837,11 +852,20 @@
     if (data.purchasePrice != null && data.purchasePrice !== '') body.purchasePrice = data.purchasePrice;
     if (data.loanAmount != null && data.loanAmount !== '') body.loanAmount = data.loanAmount;
     var overlay = { status: 'Rehab' };
-    if (data.purchaseDate) overlay.purchaseDate = data.purchaseDate;
+    var closeDate = normDate(data.purchaseDate) || data.purchaseDate || '';
+    if (closeDate) overlay.purchaseDate = closeDate;
     if (data.purchasePrice != null && data.purchasePrice !== '') overlay.purchasePrice = data.purchasePrice;
     if (data.loanAmount != null && data.loanAmount !== '') overlay.loanAmount = data.loanAmount;
     if (data.lender != null) overlay.lender = data.lender;
-    var finish = function () {
+    var finish = function (saved) {
+      if (saved) {
+        if (saved.purchaseDate) overlay.purchaseDate = normDate(saved.purchaseDate) || saved.purchaseDate;
+        if (saved.purchasePrice != null && saved.purchasePrice !== '') overlay.purchasePrice = saved.purchasePrice;
+        if (saved.loanAmount != null && saved.loanAmount !== '') overlay.loanAmount = saved.loanAmount;
+        if (saved.lender != null && saved.lender !== '') overlay.lender = saved.lender;
+        if (saved.status) overlay.status = saved.status;
+        if (saved.investors && saved.investors.length) overlay.investors = saved.investors;
+      }
       toast('Status set to Rehab. Purchase figures saved.');
       expensesChanged();
       viewFlip(f.id, overlay);
@@ -882,10 +906,17 @@
       if (seq !== flipViewSeq) return;
       var ov = overlay || (pendingFlipOverlay && pendingFlipOverlay.id === id ? pendingFlipOverlay.data : null);
       if (ov) {
+        if (ov.purchaseDate) ov.purchaseDate = normDate(ov.purchaseDate) || ov.purchaseDate;
+        if (ov.saleDate) ov.saleDate = normDate(ov.saleDate) || ov.saleDate;
+        var serverDate = normDate(f.purchaseDate), serverStatus = f.status;
         Object.keys(ov).forEach(function (k) { if (ov[k] != null && ov[k] !== '') f[k] = ov[k]; });
         f._liveApplied = false;
+        // Keep the overlay until getFlip itself has caught up, so a later refresh without an overlay cannot wipe the date.
+        var caught = true;
+        if (ov.purchaseDate && serverDate !== ov.purchaseDate) caught = false;
+        if (ov.status && serverStatus !== ov.status) caught = false;
+        if (caught && pendingFlipOverlay && pendingFlipOverlay.id === id) pendingFlipOverlay = null;
       }
-      if (pendingFlipOverlay && pendingFlipOverlay.id === id && seq === flipViewSeq) pendingFlipOverlay = null;
       if (isHolding(f)) { setMode('holdings'); return renderHolding(f); }
       setMode('flips');
       TIPS = { f: f, edit: !!pageEdit && (isOwner() || f.canManage) };
