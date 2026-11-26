@@ -295,7 +295,7 @@
       capital: capital, capitalTotal: ['Total Cash Invested', capTotal],
       saleTitle: sold ? 'Paid Out' : 'Projected Payout',
       sale: saleRows, saleTotal: ['Paid Out To Partners', toPartners],
-      saleNet: ['Net Proceeds', net], saleNote: saleNote,
+      saleNet: ['Net Proceeds', toPartners], saleNote: saleNote,
       paid: paid, paidTotal: ['Total To Partners', r2(inv.reduce(function (t, i) { return t + i.distribution; }, 0))],
       source: src, live: true };
   }

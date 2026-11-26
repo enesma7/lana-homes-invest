@@ -515,10 +515,12 @@
     var fn = afterFlipRender; afterFlipRender = null;
     if (fn) fn(f);
   }
-  function refreshFlipView(id, thenFn) {
+  var flipViewSeq = 0, pendingFlipOverlay = null;
+  function refreshFlipView(id, overlayOrFn, thenFn) {
+    if (typeof overlayOrFn === 'function') { thenFn = overlayOrFn; overlayOrFn = null; }
     expensesChanged();
     if (thenFn) whenFlipRendered(thenFn);
-    viewFlip(id);
+    viewFlip(id, overlayOrFn);
   }
 
   function sellingCostsPrompt(f, onSave, onCancel) {
@@ -873,12 +875,17 @@
   }
 
   function viewFlip(id, overlay) {
+    if (overlay) pendingFlipOverlay = { id: id, data: overlay };
+    var seq = ++flipViewSeq;
     loading();
     getFlipLive(id).then(function (f) {
-      if (overlay) {
-        Object.keys(overlay).forEach(function (k) { if (overlay[k] != null && overlay[k] !== '') f[k] = overlay[k]; });
+      if (seq !== flipViewSeq) return;
+      var ov = overlay || (pendingFlipOverlay && pendingFlipOverlay.id === id ? pendingFlipOverlay.data : null);
+      if (ov) {
+        Object.keys(ov).forEach(function (k) { if (ov[k] != null && ov[k] !== '') f[k] = ov[k]; });
         f._liveApplied = false;
       }
+      if (pendingFlipOverlay && pendingFlipOverlay.id === id && seq === flipViewSeq) pendingFlipOverlay = null;
       if (isHolding(f)) { setMode('holdings'); return renderHolding(f); }
       setMode('flips');
       TIPS = { f: f, edit: !!pageEdit && (isOwner() || f.canManage) };
@@ -933,36 +940,31 @@
       var st = document.getElementById('st');
       if (st) st.onchange = function () {
         var s = st.value;
-        var go = function (saleDate, salePrice) {
-          var overlay = { status: s };
+        if (s === f.status) return;
+        var revert = function () { st.disabled = false; st.value = f.status; };
+        st.disabled = true;
+        var go = function (saleDate, salePrice, extra) {
+          loading();
+          var overlay = Object.assign({ status: s }, extra || {});
           if (saleDate) overlay.saleDate = saleDate;
           if (s === 'Sold' && salePrice != null && salePrice !== '') overlay.salePrice = salePrice;
           var p = api('setStatus', { id: f.id, status: s, saleDate: saleDate || '' });
           if (s === 'Sold' && salePrice != null && salePrice !== '') p = p.then(function () { return api('updateFlip', { id: f.id, flip: { salePrice: salePrice } }); });
-          p.then(function () { toast('Status set to ' + s + (s === 'Sold' ? '. Moved to the Archive.' : '.')); expensesChanged(); viewFlip(f.id, overlay); }).catch(function (e) { fail(e); st.value = f.status; });
+          p.then(function () { toast('Status set to ' + s + (s === 'Sold' ? '. Moved to the Archive.' : '.')); expensesChanged(); viewFlip(f.id, overlay); }).catch(function (e) { fail(e); revert(); });
         };
-        if (s === 'In Escrow' && f.status !== 'In Escrow' && can) {
-          partnersPrompt(f, 'Who Are The Partners?', 'Save And Move To In Escrow', function () { go(); }, function () { st.value = f.status; });
-        } else if (s === 'Rehab' && f.status !== 'Rehab' && isOwner()) {
+        if (s === 'In Escrow' && can) {
+          partnersPrompt(f, 'Who Are The Partners?', 'Save And Move To In Escrow', function (ov) { go(null, null, ov); }, revert);
+        } else if (s === 'Rehab' && can) {
           purchaseFiguresPrompt(f, function (data) {
-            savePurchaseClosing(f, data, null, function (e) { fail(e); st.value = f.status; });
-          }, function () { st.value = f.status; });
-        } else if (s === 'Sold' && f.status === 'In Escrow' && isOwner()) {
+            savePurchaseClosing(f, data, null, function (e) { fail(e); revert(); });
+          }, revert);
+        } else if (s === 'Sold' && can) {
           sellingCostsPrompt(f, function (data) {
-            saveSaleClosing(f, data, null, function (e) { fail(e); st.value = f.status; });
-          }, function () { st.value = f.status; });
-        } else if (s === 'Sold') {
-          modal('<h2>Mark As Sold</h2><p class="sub2">Sold flips move to the Archive. Add the sale close date and confirm the sale price. You can leave the date blank to flag it as Needs Date.</p><div class="field"><label>Sale Close Date</label><input type="date" id="sd" value="' + esc(f.saleDate || '') + '"></div><div class="field"><label>Sale Price</label><input id="sp" inputmode="decimal" value="' + esc(f.salePrice != null && f.salePrice !== '' ? m2(f.salePrice) : '') + '"></div><div class="row"><button type="button" class="btn gold" id="sold-ok">Mark Sold</button><button type="button" class="btn" id="sold-cx">Cancel</button></div>', function (m) {
-            m.querySelector('#sold-ok').onclick = function () {
-              var d = m.querySelector('#sd').value, raw = m.querySelector('#sp').value, price = raw;
-              if (/^\$|^−\$|^-\$/.test(price)) price = String(C.n(String(price).replace('−', '-')));
-              closeModal(); go(d, raw === '' ? null : C.n(price));
-            };
-            m.querySelector('#sold-cx').onclick = function () { closeModal(); st.value = f.status; };
-          });
+            saveSaleClosing(f, data, null, function (e) { fail(e); revert(); });
+          }, revert);
         } else go();
       };
-      bindPdf(function () { return pdfPropData(f, x); }, 'flip', 'Flip Report', f.address); bindTipToggle(f, { can: can });
+            bindPdf(function () { return pdfPropData(f, x); }, 'flip', 'Flip Report', f.address); bindTipToggle(f, { can: can });
       bindInvestors(f);
       var inv = document.getElementById('inv'); if (inv) inv.onclick = function () { inviteModal(f); };
       document.querySelectorAll('.seg[data-u]').forEach(function (sg) { sg.querySelectorAll('button').forEach(function (b) { b.onclick = function () { api('setAccessRole', { flipId: f.id, userId: sg.dataset.u, role: b.dataset.r }).then(function () { toast('Role updated.'); viewFlip(f.id); }).catch(fail); }; }); });
@@ -1228,8 +1230,14 @@
       m.querySelector('#ppr-ok').onclick = function () {
         var r = P.read(); if (showPartnerError(m, r.error)) return;
         var b = this; b.disabled = true;
-        var send = sameRows(rows, r.rows) ? Promise.resolve() : api('updateFlip', { id: f.id, flip: { investors: withMeta(f, r.rows) } });
-        send.then(function () { closeModal(); S.flips = null; onDone(); }).catch(function (e) { fail(e); b.disabled = false; });
+        var savedRows = withMeta(f, r.rows);
+        var send = sameRows(rows, r.rows) ? Promise.resolve(null) : api('updateFlip', { id: f.id, flip: { investors: savedRows } });
+        send.then(function (saved) {
+          closeModal();
+          expensesChanged();
+          var investors = (saved && saved.investors && saved.investors.length) ? saved.investors : savedRows;
+          if (onDone) onDone({ investors: investors });
+        }).catch(function (e) { fail(e); b.disabled = false; });
       };
     });
   }
@@ -1246,8 +1254,9 @@
         var pr = P.read(); if (showPartnerError(m, pr.error)) return;
         if (sameRows(rows, pr.rows)) { closeModal(); toast('No changes.'); return; }
         var btn = this; btn.disabled = true;
-        api('updateFlip', { id: f.id, flip: { investors: withMeta(f, pr.rows) } })
-          .then(function () { S.flips = null; closeModal(); toast('Investors saved.'); viewFlip(f.id); })
+        var savedRows = withMeta(f, pr.rows);
+        api('updateFlip', { id: f.id, flip: { investors: savedRows } })
+          .then(function (saved) { expensesChanged(); closeModal(); toast('Investors saved.'); viewFlip(f.id, { investors: (saved && saved.investors) || savedRows }); })
           .catch(fail).then(function () { btn.disabled = false; });
       };
     });
@@ -1438,8 +1447,18 @@
           expensesChanged();
           if (!host) closeModal();
           toast(Object.keys(bootstrap).length ? 'Saved. Starting cost totals were added as expense line items you can break out later.' : 'Saved.');
+          var ov = {};
+          if (body.investors) ov.investors = body.investors;
+          if (r && r.investors && r.investors.length) ov.investors = r.investors;
+          if (!hold && isNew && (r.status === 'Rehab' || r.status === 'Sold' || r.status === 'In Escrow')) {
+            whenFlipRendered(function (shown) {
+              if (r.status === 'In Escrow') partnersPrompt(shown, 'Who Are The Partners?', 'Save And Move To In Escrow', function (pov) { expensesChanged(); viewFlip(shown.id, pov); }, function () {});
+              else if (r.status === 'Rehab') purchaseFiguresPrompt(shown, function (data) { savePurchaseClosing(shown, data, null, fail); }, function () {});
+              else if (r.status === 'Sold') sellingCostsPrompt(shown, function (data) { saveSaleClosing(shown, data, null, fail); }, function () {});
+            });
+          }
           location.hash = '#/flip/' + r.id;
-          if (!isNew) viewFlip(r.id);
+          viewFlip(r.id, Object.keys(ov).length ? ov : null);
         }).catch(fail).then(function () { btn.disabled = false; });
       };
     };
@@ -1577,7 +1596,7 @@
       var cv = document.getElementById('conv');
       if (cv) cv.onclick = function () { confirmBox('Turn Into Active Flip', '<p>This creates a new Active flip from this estimate (with its inventory needs list). The person who made the estimate is added as a Member.</p>', 'Create Flip', function () { api('convertEstimate', { id: est.id }).then(function (f) {
           S.flips = null; f.ledger = f.ledger || C.ledger([]);
-          partnersPrompt(f, 'Who Are The Partners?', 'Save Partners', function () { toast('Flip created.'); location.hash = '#/flip/' + f.id; });
+          partnersPrompt(f, 'Who Are The Partners?', 'Save Partners', function (ov) { toast('Flip created.'); expensesChanged(); location.hash = '#/flip/' + f.id; viewFlip(f.id, ov); });
         }).catch(fail); }); };
     }
   }
