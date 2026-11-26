@@ -684,6 +684,62 @@
     };
   }
 
-  var api = { splitsOf: splitsOf, ledgerSum: ledgerSum, payerMatches: ledgerPayerMatches, estimate: estimate, flip: flip, holding: holding, holdingTaxYears: holdingTaxYears, holdingClassOf: holdingClassOf, unitsOf: unitsOf, depositsOf: depositsOf, earliestStart: earliestStart, monthlyRentOf: monthlyRentOf, live: ledgerLive, ledger: ledger, ledgers: ledgers, phaseOf: ledgerPhase, atSaleOf: ledgerAtSale, payerOf: ledgerPayer, PHASES: LEDGER_PHASES, DEAL_PHASES: LEDGER_DEAL, daysBetween: daysBetween, monthsBetween: monthsBetween, annualize: annualize, n: n, downPayment: downPayment, cashToPurchase: cashToPurchase, afterSaleNotAtSale: afterSaleNotAtSale, purchaseCreditsOf: purchaseCreditsOf, saleClosingOf: saleClosingOf, SALE_CLOSING_LINES: SALE_CLOSING_LINES, numbersDisplayOf: numbersDisplayOf, purchaseClosingOf: purchaseClosingOf, PURCHASE_CLOSING_LINES: PURCHASE_CLOSING_LINES, parseOverrides: parseOverrides, applyOverrides: applyOverrides };
+
+  function pad2(n) { n = String(n); return n.length < 2 ? '0' + n : n; }
+  /** Normalize a date to YYYY-MM-DD. Accepts ISO strings, Date objects, and M/D/YYYY. */
+  function normDate(d) {
+    if (d == null || d === '') return '';
+    if (d instanceof Date && !isNaN(d.getTime())) return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+    var s0 = String(d).trim(), m;
+    m = s0.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return m[1] + '-' + m[2] + '-' + m[3];
+    m = s0.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    if (m) return m[3] + '-' + pad2(m[1]) + '-' + pad2(m[2]);
+    return '';
+  }
+  function fmtDate(d) {
+    var n = normDate(d); if (!n) return '';
+    var p0 = n.split('-');
+    return (+p0[1]) + '/' + (+p0[2]) + '/' + p0[0];
+  }
+  /**
+   * The property’s purchase close date. Only purchase-side keys (not a generic
+   * closeDate, which could be the sale close).
+   */
+  function purchaseDateOf(f) {
+    if (!f) return '';
+    return normDate(f.purchaseDate || f.purchaseCloseDate || f.PurchaseDate || '') || '';
+  }
+  /** Merge a post-save overlay onto a flip, including after a stale getFlip. */
+  function applyFlipOverlay(f, ov) {
+    var g = {}, k;
+    f = f || {};
+    for (k in f) g[k] = f[k];
+    if (!ov) return g;
+    Object.keys(ov).forEach(function (key) {
+      if (ov[key] != null && ov[key] !== '') g[key] = ov[key];
+    });
+    var pd = purchaseDateOf(ov) || purchaseDateOf(f);
+    if (pd) g.purchaseDate = pd;
+    else if (!normDate(g.purchaseDate)) g.purchaseDate = f.purchaseDate || '';
+    var sd = normDate(ov.saleDate) || normDate(f.saleDate);
+    if (sd) g.saleDate = sd;
+    else if (!normDate(g.saleDate)) g.saleDate = f.saleDate || '';
+    g._liveApplied = false;
+    return g;
+  }
+  /**
+   * Do not wipe a painted flip page with “Loading…” when we already have the
+   * property on screen or an overlay with the saved date.
+   */
+  function shouldShowLoading(opts, shown, id, overlay) {
+    opts = opts || {};
+    if (opts.quiet) return false;
+    if (shown && shown.id === id && overlay) return false;
+    if (shown && shown.id === id && purchaseDateOf(shown)) return false;
+    return true;
+  }
+
+  var api = { splitsOf: splitsOf, ledgerSum: ledgerSum, payerMatches: ledgerPayerMatches, estimate: estimate, flip: flip, holding: holding, holdingTaxYears: holdingTaxYears, holdingClassOf: holdingClassOf, unitsOf: unitsOf, depositsOf: depositsOf, earliestStart: earliestStart, monthlyRentOf: monthlyRentOf, live: ledgerLive, ledger: ledger, ledgers: ledgers, phaseOf: ledgerPhase, atSaleOf: ledgerAtSale, payerOf: ledgerPayer, PHASES: LEDGER_PHASES, DEAL_PHASES: LEDGER_DEAL, daysBetween: daysBetween, monthsBetween: monthsBetween, annualize: annualize, n: n, downPayment: downPayment, cashToPurchase: cashToPurchase, afterSaleNotAtSale: afterSaleNotAtSale, purchaseCreditsOf: purchaseCreditsOf, saleClosingOf: saleClosingOf, SALE_CLOSING_LINES: SALE_CLOSING_LINES, numbersDisplayOf: numbersDisplayOf, purchaseClosingOf: purchaseClosingOf, PURCHASE_CLOSING_LINES: PURCHASE_CLOSING_LINES, parseOverrides: parseOverrides, applyOverrides: applyOverrides, normDate: normDate, fmtDate: fmtDate, purchaseDateOf: purchaseDateOf, applyFlipOverlay: applyFlipOverlay, shouldShowLoading: shouldShowLoading };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.FlipCalc = api;
 })(this);

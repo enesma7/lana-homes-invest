@@ -50,21 +50,9 @@
   function soldYear(f) { var m = /Sold (\d{4})\b/.exec(f && f.datesNote || ''); return m ? m[1] : ''; }
   function soldCell(f) { return fmtDate(f.saleDate) || ((soldYear(f) ? soldYear(f) + ' ' : '') + '<span class="pill warn">Needs Date</span>'); }
   function pad2(n) { n = String(n); return n.length < 2 ? '0' + n : n; }
-  function normDate(d) {
-    if (d == null || d === '') return '';
-    if (d instanceof Date && !isNaN(d.getTime())) return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
-    var s = String(d).trim(), m;
-    m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (m) return m[1] + '-' + m[2] + '-' + m[3];
-    m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-    if (m) return m[3] + '-' + pad2(m[1]) + '-' + pad2(m[2]);
-    return '';
-  }
-  function fmtDate(d) {
-    var n = normDate(d); if (!n) return '';
-    var p = n.split('-');
-    return (+p[1]) + '/' + (+p[2]) + '/' + p[0];
-  }
+  function normDate(d) { return C.normDate(d); }
+  function fmtDate(d) { return C.fmtDate(d); }
+  function purchasedText(f) { return C.fmtDate(C.purchaseDateOf(f) || (f && f.purchaseDate)) || '<span class="pill warn">Needs Date</span>'; }
   function todayISO() { var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
   function toast(msg, err) { var t = document.getElementById('toast'); t.textContent = msg; t.className = 'toast' + (err ? ' err' : ''); t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(function () { t.hidden = true; }, 3800); }
   function isOwner() { return S.user && S.user.role === 'owner'; }
@@ -515,7 +503,7 @@
         if (!rows.length) html += '<p class="empty">No open flips.</p>';
       } else {
         html += rows.length ? '<div class="card tblwrap"><table class="t"><thead><tr><th>Property</th><th>Purchased</th><th>Sold</th><th class="r">Purchase</th><th class="r">Sale</th><th class="r">Profit</th><th class="r">ROI On Cash</th><th class="r">Annualized</th></tr></thead><tbody>' +
-          rows.map(function (r) { var f = r.f, x = r.x; return '<tr class="flipcard" data-id="' + esc(f.id) + '"><td><b>' + esc(f.address) + '</b><div class="meta">' + esc(f.city) + '</div></td><td>' + (fmtDate(f.purchaseDate) || '<span class="pill warn">Needs Date</span>') + '</td><td>' + soldCell(f) + '</td><td class="r num">' + money(f.purchasePrice, 0) + '</td><td class="r num">' + money(f.salePrice, 0) + '</td><td class="r num">' + sMoney(x.profit) + '</td><td class="r">' + sPct(x.roiCash) + '</td><td class="r">' + (x.simpleAnnual == null ? '—' : sPct(x.simpleAnnual)) + '</td></tr>'; }).join('') +
+          rows.map(function (r) { var f = r.f, x = r.x; return '<tr class="flipcard" data-id="' + esc(f.id) + '"><td><b>' + esc(f.address) + '</b><div class="meta">' + esc(f.city) + '</div></td><td>' + (purchasedText(f)) + '</td><td>' + soldCell(f) + '</td><td class="r num">' + money(f.purchasePrice, 0) + '</td><td class="r num">' + money(f.salePrice, 0) + '</td><td class="r num">' + sMoney(x.profit) + '</td><td class="r">' + sPct(x.roiCash) + '</td><td class="r">' + (x.simpleAnnual == null ? '—' : sPct(x.simpleAnnual)) + '</td></tr>'; }).join('') +
           '</tbody></table></div>' : '<p class="empty">No sold flips yet.</p>';
       }
       $app.innerHTML = html; bindCards(); animate();
@@ -530,12 +518,12 @@
     var fn = afterFlipRender; afterFlipRender = null;
     if (fn) fn(f);
   }
-  var flipViewSeq = 0, pendingFlipOverlay = null;
+  var flipViewSeq = 0, pendingFlipOverlay = null, shownFlip = null;
   function refreshFlipView(id, overlayOrFn, thenFn) {
     if (typeof overlayOrFn === 'function') { thenFn = overlayOrFn; overlayOrFn = null; }
     expensesChanged();
     if (thenFn) whenFlipRendered(thenFn);
-    viewFlip(id, overlayOrFn);
+    viewFlip(id, overlayOrFn, { quiet: !!(shownFlip && shownFlip.id === id) });
   }
 
   function sellingCostsPrompt(f, onSave, onCancel) {
@@ -684,13 +672,16 @@
     if (data.salePrice != null && data.salePrice !== '') body.salePrice = data.salePrice;
     if (data.hasLoanPayoff) body.loanAmount = data.loanPayoff;
     var overlay = { status: 'Sold' };
-    if (data.saleDate) overlay.saleDate = data.saleDate;
+    if (data.saleDate) overlay.saleDate = C.normDate(data.saleDate) || data.saleDate;
     if (data.salePrice != null && data.salePrice !== '') overlay.salePrice = data.salePrice;
     if (data.hasLoanPayoff) overlay.loanAmount = data.loanPayoff;
+    pendingFlipOverlay = { id: f.id, data: overlay };
+    if (!shownFlip || shownFlip.id !== f.id) shownFlip = f;
+    paintFlip(C.applyFlipOverlay(shownFlip, overlay));
     var finish = function () {
       toast('Status set to Sold. Moved to the Archive.');
       expensesChanged();
-      viewFlip(f.id, overlay);
+      viewFlip(f.id, overlay, { quiet: true });
       if (thenOk) thenOk();
     };
     var fallback = function () {
@@ -852,14 +843,18 @@
     if (data.purchasePrice != null && data.purchasePrice !== '') body.purchasePrice = data.purchasePrice;
     if (data.loanAmount != null && data.loanAmount !== '') body.loanAmount = data.loanAmount;
     var overlay = { status: 'Rehab' };
-    var closeDate = normDate(data.purchaseDate) || data.purchaseDate || '';
+    var closeDate = C.normDate(data.purchaseDate) || data.purchaseDate || '';
     if (closeDate) overlay.purchaseDate = closeDate;
     if (data.purchasePrice != null && data.purchasePrice !== '') overlay.purchasePrice = data.purchasePrice;
     if (data.loanAmount != null && data.loanAmount !== '') overlay.loanAmount = data.loanAmount;
     if (data.lender != null) overlay.lender = data.lender;
+    pendingFlipOverlay = { id: f.id, data: overlay };
+    if (!shownFlip || shownFlip.id !== f.id) shownFlip = f;
+    paintFlip(C.applyFlipOverlay(shownFlip, overlay));
     var finish = function (saved) {
       if (saved) {
-        if (saved.purchaseDate) overlay.purchaseDate = normDate(saved.purchaseDate) || saved.purchaseDate;
+        var savedDate = C.normDate(saved.purchaseDate);
+        if (savedDate) overlay.purchaseDate = savedDate;
         if (saved.purchasePrice != null && saved.purchasePrice !== '') overlay.purchasePrice = saved.purchasePrice;
         if (saved.loanAmount != null && saved.loanAmount !== '') overlay.loanAmount = saved.loanAmount;
         if (saved.lender != null && saved.lender !== '') overlay.lender = saved.lender;
@@ -868,7 +863,7 @@
       }
       toast('Status set to Rehab. Purchase figures saved.');
       expensesChanged();
-      viewFlip(f.id, overlay);
+      viewFlip(f.id, overlay, { quiet: true });
       if (thenOk) thenOk();
     };
     var fallback = function () {
@@ -898,27 +893,10 @@
     });
   }
 
-  function viewFlip(id, overlay) {
-    if (overlay) pendingFlipOverlay = { id: id, data: overlay };
-    var seq = ++flipViewSeq;
-    loading();
-    getFlipLive(id).then(function (f) {
-      if (seq !== flipViewSeq) return;
-      var ov = overlay || (pendingFlipOverlay && pendingFlipOverlay.id === id ? pendingFlipOverlay.data : null);
-      if (ov) {
-        if (ov.purchaseDate) ov.purchaseDate = normDate(ov.purchaseDate) || ov.purchaseDate;
-        if (ov.saleDate) ov.saleDate = normDate(ov.saleDate) || ov.saleDate;
-        var serverDate = normDate(f.purchaseDate), serverStatus = f.status;
-        Object.keys(ov).forEach(function (k) { if (ov[k] != null && ov[k] !== '') f[k] = ov[k]; });
-        f._liveApplied = false;
-        // Keep the overlay until getFlip itself has caught up, so a later refresh without an overlay cannot wipe the date.
-        var caught = true;
-        if (ov.purchaseDate && serverDate !== ov.purchaseDate) caught = false;
-        if (ov.status && serverStatus !== ov.status) caught = false;
-        if (caught && pendingFlipOverlay && pendingFlipOverlay.id === id) pendingFlipOverlay = null;
-      }
-      if (isHolding(f)) { setMode('holdings'); return renderHolding(f); }
-      setMode('flips');
+  function paintFlip(f) {
+    shownFlip = f;
+    if (isHolding(f)) { setMode('holdings'); return renderHolding(f); }
+    setMode('flips');
       TIPS = { f: f, edit: !!pageEdit && (isOwner() || f.canManage) };
       var x = C.flip(f, todayISO()), sold = f.status === 'Sold', can = f.canManage, own = isOwner();
       markTab(sold ? '#/archive' : '#/flips');
@@ -938,7 +916,7 @@
         kpi('Return On Cash', sPct(x.roiCash), 'On ' + money(f.cashInvested, 0) + ' cash in') +
         kpi('Return On Total Cost', sPct(x.roiCost), 'On ' + money(x.totalCost, 0) + ' all-in') +
         kpi(sold ? annualizedDisplay(x).title : 'Days Held So Far', sold ? annualizedDisplay(x).html : (x.daysHeld || '—'),
-          sold ? (x.daysHeld ? x.daysHeld + ' days, purchase to sale' : 'Add the sale close date') : 'Since ' + (fmtDate(f.purchaseDate) || 'purchase')) + '</div>';
+          sold ? (x.daysHeld ? x.daysHeld + ' days, purchase to sale' : 'Add the sale close date') : 'Since ' + (C.fmtDate(C.purchaseDateOf(f) || f.purchaseDate) || 'purchase')) + '</div>';
       var nums = C.numbersDisplayOf(f, x);
       html += '<div class="grid g2" style="margin-top:22px"><div class="card rule"><h2>The Numbers' + info(f.notes || '', 'h:Notes') + '</h2><div class="lines">' +
         ln('Purchase Price', money(f.purchasePrice)) + ln('Loan' + (f.lender ? ' · ' + esc(f.lender) : ''), money(nums.loan)) + (f.interestRate ? ln('Interest Rate', (Number(f.interestRate) || 0).toFixed(3).replace(/\.?0+$/, '') + '%') : '') +
@@ -951,7 +929,7 @@
         '<p class="sub2">' + (x.rehabVariance > 0 ? '<span class="neg">' + money(x.rehabVariance) + '</span> over budget' : x.rehabVariance < 0 ? '<span class="pos">' + money(-x.rehabVariance) + '</span> under budget' : 'On budget') + '</p>' +
         '<hr class="sep"><h2>Partners</h2>' +
         (x.investors.length ? '<table class="t"><thead><tr><th>Partner</th><th class="r">Capital</th><th class="r">Split</th><th class="r">Profit Share</th><th class="r">Payout</th></tr></thead><tbody>' + x.investors.map(function (i) { return '<tr><td>' + esc(i.name) + '</td><td class="r num">' + money(i.capital, 0) + '</td><td class="r">' + pct(i.split, 1) + (i.splitMode === 'manual' ? info('Manual split: an agreed percentage, not the cash share') : '') + '</td><td class="r num">' + sMoney(i.profitShare, 0) + '</td><td class="r num"><b>' + money(i.distribution, 0) + '</b></td></tr>'; }).join('') + '</tbody></table>' : '<p class="empty">No partners listed.</p>') +
-        '<hr class="sep"><div class="mini"><div>Purchased' + info(f.datesNote || '', 'h:Dates') + '<b>' + (fmtDate(f.purchaseDate) || '<span class="pill warn">Needs Date</span>') + '</b></div><div>Sold<b>' + (sold ? soldCell(f) : '—') + '</b></div><div>Cash In' + lock('Sum of each partner’s purchase cash and the expenses they paid — locked') + '<b>' + money(f.cashInvested, 0) + '</b></div></div></div></div>';
+        '<hr class="sep"><div class="mini"><div>Purchased' + info(f.datesNote || '', 'h:Dates') + '<b>' + (purchasedText(f)) + '</b></div><div>Sold<b>' + (sold ? soldCell(f) : '—') + '</b></div><div>Cash In' + lock('Sum of each partner’s purchase cash and the expenses they paid — locked') + '<b>' + money(f.cashInvested, 0) + '</b></div></div></div></div>';
       if (x.payout) html += payoutCard(x.payout);
       if (own) html += '<div class="label">Expenses</div><div id="proex"></div>';
       html += '<div class="label">Inventory Needs List</div><div id="invlist"></div>';
@@ -975,13 +953,14 @@
         var revert = function () { st.disabled = false; st.value = f.status; };
         st.disabled = true;
         var go = function (saleDate, salePrice, extra) {
-          loading();
           var overlay = Object.assign({ status: s }, extra || {});
-          if (saleDate) overlay.saleDate = saleDate;
+          if (saleDate) overlay.saleDate = C.normDate(saleDate) || saleDate;
           if (s === 'Sold' && salePrice != null && salePrice !== '') overlay.salePrice = salePrice;
+          pendingFlipOverlay = { id: f.id, data: overlay };
+          paintFlip(C.applyFlipOverlay(f, overlay));
           var p = api('setStatus', { id: f.id, status: s, saleDate: saleDate || '' });
           if (s === 'Sold' && salePrice != null && salePrice !== '') p = p.then(function () { return api('updateFlip', { id: f.id, flip: { salePrice: salePrice } }); });
-          p.then(function () { toast('Status set to ' + s + (s === 'Sold' ? '. Moved to the Archive.' : '.')); expensesChanged(); viewFlip(f.id, overlay); }).catch(function (e) { fail(e); revert(); });
+          p.then(function () { toast('Status set to ' + s + (s === 'Sold' ? '. Moved to the Archive.' : '.')); expensesChanged(); viewFlip(f.id, overlay, { quiet: true }); }).catch(function (e) { fail(e); revert(); });
         };
         if (s === 'In Escrow' && can) {
           partnersPrompt(f, 'Who Are The Partners?', 'Save And Move To In Escrow', function (ov) { go(null, null, ov); }, revert);
@@ -1003,7 +982,37 @@
       document.querySelectorAll('[data-resend]').forEach(function (b) { b.onclick = function () { b.disabled = true; api('resendInvite', { flipId: f.id, userId: b.dataset.resend }).then(function () { toast('Invite emailed.'); }).catch(fail).then(function () { b.disabled = false; }); }; });
       bindEstRows();
       runAfterFlipRender(f);
-    }).catch(function (e) { afterFlipRender = null; $app.innerHTML = '<p class="empty">' + esc(e.message) + '</p>'; });
+  }
+
+  function viewFlip(id, overlay, opts) {
+    opts = opts || {};
+    if (overlay) pendingFlipOverlay = { id: id, data: overlay };
+    var seq = ++flipViewSeq;
+    var ov = overlay || (pendingFlipOverlay && pendingFlipOverlay.id === id ? pendingFlipOverlay.data : null);
+    // Paint from the in-memory flip + overlay first so Purchased never waits on getFlip.
+    if (shownFlip && shownFlip.id === id && ov) {
+      paintFlip(C.applyFlipOverlay(shownFlip, ov));
+    } else if (C.shouldShowLoading(opts, shownFlip, id, ov)) {
+      loading();
+    }
+    getFlipLive(id).then(function (f) {
+      if (seq !== flipViewSeq) return;
+      var ov2 = overlay || (pendingFlipOverlay && pendingFlipOverlay.id === id ? pendingFlipOverlay.data : null);
+      var serverDate = C.purchaseDateOf(f), serverStatus = f.status;
+      if (ov2) {
+        f = C.applyFlipOverlay(f, ov2);
+        var caught = true;
+        if (C.purchaseDateOf(ov2) && serverDate !== C.purchaseDateOf(ov2)) caught = false;
+        if (ov2.status && serverStatus !== ov2.status) caught = false;
+        if (caught && pendingFlipOverlay && pendingFlipOverlay.id === id) pendingFlipOverlay = null;
+      }
+      paintFlip(f);
+    }).catch(function (e) {
+      afterFlipRender = null;
+      // A failed or slow getFlip must not replace a Purchased date we already painted.
+      if (shownFlip && shownFlip.id === id && C.purchaseDateOf(shownFlip)) { toast(e.message, true); return; }
+      $app.innerHTML = '<p class="empty">' + esc(e.message) + '</p>';
+    });
   }
 
 
@@ -1717,7 +1726,7 @@
       return '<div class="card flipcard rule" data-id="' + esc(f.id) + '" tabindex="0"><div class="spread"><div><div class="addr">' + esc(f.address) + '</div><div class="meta">' + esc(f.city) + '</div></div>' +
         '<div class="row"><span class="pill s-' + esc(f.status.replace(/\s/g, '')) + '">' + esc(f.status) + '</span>' + (f.myRole === 'admin' ? '<span class="pill admin">Property Admin</span>' : '') + '</div></div>' +
         '<div class="spread" style="margin-top:10px;align-items:center"><div class="mini" style="flex:1"><div>Value<b>' + (x.value ? money(x.value, 0) : '<span class="pill warn">Needs Value</span>') + '</b></div><div>Equity<b>' + sMoney(x.equity, 0) + '</b></div>' +
-        '<div>Rent / Mo<b>' + (x.rent ? money(x.rent, 0) : '<span class="pill warn">Needs Data</span>') + '</b></div><div>Cash Flow / Mo<b>' + (x.hasIncome ? sMoney(x.monthlyCashFlow, 0) : '<span class="pill warn">Needs Data</span>') + '</b></div><div>Cash In<b>' + money(x.cashInvested, 0) + '</b></div><div>Loan Balance<b>' + money(x.loanBalance, 0) + '</b></div><div>Purchased<b>' + (fmtDate(f.purchaseDate) || '<span class="pill warn">Needs Date</span>') + '</b></div></div>' +
+        '<div>Rent / Mo<b>' + (x.rent ? money(x.rent, 0) : '<span class="pill warn">Needs Data</span>') + '</b></div><div>Cash Flow / Mo<b>' + (x.hasIncome ? sMoney(x.monthlyCashFlow, 0) : '<span class="pill warn">Needs Data</span>') + '</b></div><div>Cash In<b>' + money(x.cashInvested, 0) + '</b></div><div>Loan Balance<b>' + money(x.loanBalance, 0) + '</b></div><div>Purchased<b>' + (purchasedText(f)) + '</b></div></div>' +
         donut(x.totalRoi || 0, 1, pct(x.totalRoi, 0), 'Total Return', x.totalRoi == null ? 'gold' : (x.totalRoi >= 0 ? 'good' : 'bad'), 96) + '</div></div>';
     }).join('') + '</div>';
   }
@@ -1896,7 +1905,7 @@
       ln('Current Value', x.value ? money(x.value) : '<span class="pill warn">Needs Value</span>') + ln('Equity', sMoney(x.equity), 'tot', { lock: 'Current value minus loan balance — locked' }) + '</div></div>' +
       '<div class="card rule"><h2>Return</h2><div style="display:flex;justify-content:center;gap:18px;margin-top:10px">' +
       donut(x.equityRoi || 0, 1, pct(x.equityRoi, 0), 'Equity Gain', x.equityRoi == null ? 'gold' : (x.equityRoi >= 0 ? 'good' : 'bad')) + donut(x.cashOnCash || 0, 0.2, x.hasIncome ? pct(x.cashOnCash, 1) : '—', 'Cash-On-Cash', 'gold') + '</div>' +
-      '<hr class="sep"><div class="mini"><div>Purchased' + info(f.datesNote || '', 'h:Dates') + '<b>' + (fmtDate(f.purchaseDate) || '<span class="pill warn">Needs Date</span>') + '</b></div><div>Rented Since' + lock('Earliest unit rented-since date — locked') + '<b>' + (fmtDate(x.rentalStart || f.rentalStart) || fmtDate(f.purchaseDate) || '—') + '</b></div><div>Months Held' + lock('Calculated from the purchase date — locked') + '<b>' + (x.monthsHeld == null ? '—' : x.monthsHeld) + '</b></div><div>Value Vs All-In' + lock('Current value minus all-in cost — locked') + '<b>' + sMoney(x.value ? x.value - x.allIn : 0, 0) + '</b></div></div></div></div>';
+      '<hr class="sep"><div class="mini"><div>Purchased' + info(f.datesNote || '', 'h:Dates') + '<b>' + (purchasedText(f)) + '</b></div><div>Rented Since' + lock('Earliest unit rented-since date — locked') + '<b>' + (fmtDate(x.rentalStart || f.rentalStart) || C.fmtDate(C.purchaseDateOf(f) || f.purchaseDate) || '—') + '</b></div><div>Months Held' + lock('Calculated from the purchase date — locked') + '<b>' + (x.monthsHeld == null ? '—' : x.monthsHeld) + '</b></div><div>Value Vs All-In' + lock('Current value minus all-in cost — locked') + '<b>' + sMoney(x.value ? x.value - x.allIn : 0, 0) + '</b></div></div></div></div>';
     var unitRentRows = (x.units && x.units.length) ? x.units.map(function (u) { return '<div class="ln sub"><span class="lnl">' + esc(u.name || 'Unit') + (u.rentalStart ? ' · since ' + (fmtDate(u.rentalStart) || u.rentalStart) : '') + '</span><span class="num">' + money(u.rent) + '</span></div>'; }).join('') : '';
     html += '<div class="card rule rentcard" style="margin-top:16px"><h2>Rent And Cash Flow</h2><div class="lines">' +
       breakDown(ln('Monthly Rent', x.rent ? money(x.rent) : '<span class="pill warn">Needs Data</span>', '', { lock: (x.units && x.units.length) ? 'Sum of unit rents — locked' : 'Monthly rent — locked' }), unitRentRows) +
