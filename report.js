@@ -171,9 +171,13 @@
     R.hero('Equity', money(x.equity, 0), (x.value ? money(x.value, 0) + ' value' : 'Needs value') + ' - ' + money(x.loanBalance, 0) + ' loan', x.equity < 0);
     R.kpis([['Monthly Cash Flow', x.hasIncome ? money(x.monthlyCashFlow, 0) : 'Needs data', x.monthlyCashFlow < 0 ? 'bad' : ''], ['Cash-On-Cash', x.hasIncome ? pct(x.cashOnCash) : '-'], ['Equity Gain', pct(x.equityRoi)], ['Total Return', pct(x.totalRoi)]]);
     R.section('The Numbers');
-    var rows = [['Purchase Price', money(f.purchasePrice)], ['Closing Costs', money(f.buyClosingCosts)], ['Improvements Spent', money(f.rehabSpent)], ['All-In Cost', money(x.allIn), true],
+    var rows = [['Purchase Price', money(f.purchasePrice)], ['Closing Costs', money(f.buyClosingCosts)], ['Improvements Spent', money(f.rehabSpent)]];
+    if (n(f.holdingCosts)) rows.push(['Holding Costs', money(f.holdingCosts)]);
+    if (n(f.sellingCosts)) rows.push(['Selling Costs', money(f.sellingCosts)]);
+    if (n(f.otherCosts)) rows.push([f.otherCostsLabel || 'Other Costs', money(f.otherCosts)]);
+    rows.push(['All-In Cost', money(x.allIn), true],
       ['Original Loan' + (f.lender ? ' · ' + f.lender : ''), money(f.loanAmount)], ['Current Loan Balance', money(x.loanBalance)], ['Cash Invested', money(x.cashInvested), true],
-      ['Current Value', x.value ? money(x.value) : 'Needs value'], ['Equity', money(x.equity), true], ['Monthly Rent', x.rent ? money(x.rent) : 'Needs data']];
+      ['Current Value', x.value ? money(x.value) : 'Needs value'], ['Equity', money(x.equity), true], ['Monthly Rent', x.rent ? money(x.rent) : 'Needs data']);
     (x.units || []).forEach(function (u) { rows.push(['  ' + (u.name || 'Unit') + (u.rentalStart ? ' · since ' + (fdate(u.rentalStart) || u.rentalStart) : ''), money(u.rent)]); });
     rows.push(['Monthly Expenses', x.expenses ? money(x.expenses) : 'Needs data'], ['Monthly Cash Flow', x.hasIncome ? money(x.monthlyCashFlow) : 'Needs data', true]);
     if (x.hasIncome) rows.push(['Annual NOI', money(x.noi), true]);

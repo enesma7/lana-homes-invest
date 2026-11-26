@@ -1837,7 +1837,11 @@
       kpi('Cash-On-Cash', x.hasIncome ? sPct(x.cashOnCash) : '—', '') +
       kpi('Total Return', sPct(x.totalRoi), 'Equity gain plus a year of cash flow') + '</div>';
     html += '<div class="grid g2" style="margin-top:22px"><div class="card rule"><h2>The Numbers' + info(f.notes || '', 'h:Notes') + '</h2><div class="lines">' +
-      ln('Purchase Price', money(f.purchasePrice)) + ln('Closing Costs', money(f.buyClosingCosts), '', { close: 'Buying' }) + ln('Improvements Spent', money(f.rehabSpent), '', { lock: 'Total of this property’s improvement expense entries — locked' }) + ln('All-In Cost', money(x.allIn), 'tot', { lock: 'Purchase price + closing costs + improvements and other costs — locked' }) +
+      ln('Purchase Price', money(f.purchasePrice)) + ln('Closing Costs', money(f.buyClosingCosts), '', { close: 'Buying' }) + ln('Improvements Spent', money(f.rehabSpent), '', { lock: 'Total of this property’s improvement expense entries — locked' }) +
+      (C.n(f.holdingCosts) ? ln('Holding Costs', money(f.holdingCosts), '', { lock: 'Total of this property’s Holding expense entries — locked' }) : '') +
+      (C.n(f.sellingCosts) ? ln('Selling Costs', money(f.sellingCosts), '', { close: 'Selling' }) : '') +
+      (C.n(f.otherCosts) ? ln(esc(f.otherCostsLabel || 'Other Costs'), money(f.otherCosts), '', { lock: 'Total of After-Sale expense entries — locked' }) : '') +
+      ln('All-In Cost', money(x.allIn), 'tot', { lock: 'Sum of purchase, closing, improvements, and other cost lines — locked' }) +
       ln('Original Loan' + (f.lender ? ' · ' + esc(f.lender) : ''), money(f.loanAmount)) + (f.interestRate ? ln('Interest Rate', (Number(f.interestRate) || 0).toFixed(3).replace(/\.?0+$/, '') + '%') : '') + ln('Current Loan Balance', money(x.loanBalance)) + ln('Cash Invested', money(x.cashInvested), 'tot', { lock: 'Cash put into this property — locked' }) +
       ln('Current Value', x.value ? money(x.value) : '<span class="pill warn">Needs Value</span>') + ln('Equity', sMoney(x.equity), 'tot', { lock: 'Current value minus loan balance — locked' }) + '</div></div>' +
       '<div class="card rule"><h2>Return</h2><div style="display:flex;justify-content:center;gap:18px;margin-top:10px">' +
