@@ -151,10 +151,11 @@
     R.hero(sold ? (x.profit < 0 ? 'Loss' : 'Profit') : (x.profit < 0 ? 'Projected Loss' : 'Projected Profit'), money(x.profit, 0), (sold ? 'Sold for ' : 'At a ') + money(f.salePrice, 0) + (sold ? '' : ' sale'), x.profit < 0);
     R.kpis([['Return On Cash', pct(x.roiCash), x.roiCash < 0 ? 'bad' : ''], ['Return On Total Cost', pct(x.roiCost), x.roiCost < 0 ? 'bad' : ''], ['Cash Invested', money(f.cashInvested, 0)], [sold ? 'Annualized (Simple)' : 'Days Held So Far', sold ? pct(x.simpleAnnual) : String(x.daysHeld || '-')]]);
     R.section('The Numbers');
-    var rows = [['Purchase Price', money(f.purchasePrice)], ['Loan' + (f.lender ? ' · ' + f.lender : ''), money(f.loanAmount)], ['Buying Closing Costs', money(f.buyClosingCosts)], ['Rehab Spent (Budget ' + money(f.rehabBudget, 0) + ')', money(f.rehabSpent)], ['Holding Costs', money(f.holdingCosts)], ['Selling Costs', money(f.sellingCosts)]];
+    var nums = C.numbersDisplayOf(f, x);
+    var rows = [['Purchase Price', money(f.purchasePrice)], ['Loan' + (f.lender ? ' · ' + f.lender : ''), money(nums.loan)], ['Buying Closing Costs', money(f.buyClosingCosts)], ['Rehab Spent (Budget ' + money(f.rehabBudget, 0) + ')', money(f.rehabSpent)], ['Holding Costs', money(f.holdingCosts)], ['Selling Costs', money(f.sellingCosts)]];
     if (n(f.otherCosts)) rows.push([f.otherCostsLabel || 'Other Costs', money(f.otherCosts)]);
-    if (n(f.adjustments)) rows.push([f.adjustmentsLabel || 'Credits', '-' + money(f.adjustments)]);
-    if (n(f.purchaseCredits)) rows.push(['Purchase Credits', '-' + money(f.purchaseCredits)]);
+    if (n(nums.adjustments)) rows.push([nums.adjustmentsLabel || 'Credits', '-' + money(nums.adjustments)]);
+    if (n(nums.purchaseCredits)) rows.push(['Purchase Credits', '-' + money(nums.purchaseCredits)]);
     rows.push(['Total Cost', money(x.totalCost), true], [sold ? 'Sale Price' : 'Projected Sale Price', money(f.salePrice), true], [sold ? 'Profit' : 'Projected Profit', money(x.profit), true, x.profit < 0 ? 'bad' : '']);
     R.lines(rows);
     R.note('Purchased ' + (fdate(f.purchaseDate) || '(needs date)') + (sold ? ' · Sold ' + (fdate(f.saleDate) || '(needs date)') : '') + '');

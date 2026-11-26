@@ -259,6 +259,29 @@
     var identified = flagged || (f && f.id === 'f_reis') || /^seller[- ]carry payoff$/i.test(lab);
     return identified ? creditShown : 0;
   }
+
+  /**
+   * Display-only amounts for The Numbers card and the flip PDF. Math is unchanged.
+   * A flagged seller-carry payoff reduction is netted into the Loan line and the
+   * credit line is dropped, matching the payout card. Other properties are unchanged.
+   */
+  function numbersDisplayOf(f, x) {
+    var loan = n(f && f.loanAmount);
+    var adj = n(f && f.adjustments);
+    var pc = r2(n(f && f.purchaseCredits));
+    var exclude = pc ? 0 : purchaseCreditsOf(f, f && f.ledger);
+    var saleCredit = r2(adj - exclude);
+    var carryRed = sellerCarryPayoffReductionOf(f, saleCredit);
+    return {
+      loan: carryRed ? r2(loan - carryRed) : loan,
+      adjustments: carryRed ? r2(saleCredit - carryRed) : adj,
+      adjustmentsLabel: (f && f.adjustmentsLabel) || 'Credits',
+      purchaseCredits: pc,
+      carryReduction: carryRed,
+      totalCost: x ? x.totalCost : undefined,
+      profit: x ? x.profit : undefined
+    };
+  }
   /** Purchase To Payout, built from the live numbers (never stored). */
   function payoutOf(f, x) {
     var L = f.ledger, inv = x.investors, sold = f.status === 'Sold';
@@ -623,6 +646,6 @@
     };
   }
 
-  var api = { splitsOf: splitsOf, ledgerSum: ledgerSum, payerMatches: ledgerPayerMatches, estimate: estimate, flip: flip, holding: holding, holdingTaxYears: holdingTaxYears, holdingClassOf: holdingClassOf, unitsOf: unitsOf, depositsOf: depositsOf, earliestStart: earliestStart, monthlyRentOf: monthlyRentOf, live: ledgerLive, ledger: ledger, ledgers: ledgers, phaseOf: ledgerPhase, atSaleOf: ledgerAtSale, payerOf: ledgerPayer, PHASES: LEDGER_PHASES, DEAL_PHASES: LEDGER_DEAL, daysBetween: daysBetween, monthsBetween: monthsBetween, annualize: annualize, n: n, downPayment: downPayment, cashToPurchase: cashToPurchase, afterSaleNotAtSale: afterSaleNotAtSale, purchaseCreditsOf: purchaseCreditsOf, sellerCarryPayoffReductionOf: sellerCarryPayoffReductionOf, saleClosingOf: saleClosingOf, SALE_CLOSING_LINES: SALE_CLOSING_LINES, parseOverrides: parseOverrides, applyOverrides: applyOverrides };
+  var api = { splitsOf: splitsOf, ledgerSum: ledgerSum, payerMatches: ledgerPayerMatches, estimate: estimate, flip: flip, holding: holding, holdingTaxYears: holdingTaxYears, holdingClassOf: holdingClassOf, unitsOf: unitsOf, depositsOf: depositsOf, earliestStart: earliestStart, monthlyRentOf: monthlyRentOf, live: ledgerLive, ledger: ledger, ledgers: ledgers, phaseOf: ledgerPhase, atSaleOf: ledgerAtSale, payerOf: ledgerPayer, PHASES: LEDGER_PHASES, DEAL_PHASES: LEDGER_DEAL, daysBetween: daysBetween, monthsBetween: monthsBetween, annualize: annualize, n: n, downPayment: downPayment, cashToPurchase: cashToPurchase, afterSaleNotAtSale: afterSaleNotAtSale, purchaseCreditsOf: purchaseCreditsOf, sellerCarryPayoffReductionOf: sellerCarryPayoffReductionOf, saleClosingOf: saleClosingOf, SALE_CLOSING_LINES: SALE_CLOSING_LINES, numbersDisplayOf: numbersDisplayOf, parseOverrides: parseOverrides, applyOverrides: applyOverrides };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.FlipCalc = api;
 })(this);
