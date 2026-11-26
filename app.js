@@ -701,6 +701,177 @@
     });
   }
 
+  function purchaseFiguresPrompt(f, onSave, onCancel) {
+    var lines = C.PURCHASE_CLOSING_LINES.map(function (l) { return { key: l.key, label: l.label, pct: !!l.pct, credit: !!l.credit, pctVal: '', amount: '' }; });
+    var misc = [];
+    var recorded = C.n(f.buyClosingCosts);
+    var escListener = null;
+    var cancel = function () {
+      if (escListener) document.removeEventListener('keydown', escListener);
+      escListener = null;
+      closeModal();
+      if (onCancel) onCancel();
+    };
+    modal(
+      '<div class="buyclose"><h2>Purchase Figures</h2>' +
+      '<p class="sub2">Enter the purchase price, loan, and buying closing costs. Totals update as you type. These are saved as Buying expense lines.</p>' +
+      '<div class="grid g2">' +
+        '<div class="field"><label>Purchase Price</label><input id="pc-pp" inputmode="decimal" value="' + esc(f.purchasePrice != null && f.purchasePrice !== '' ? m2(f.purchasePrice) : '') + '"></div>' +
+        '<div class="field"><label>Purchase Close Date</label><input type="date" id="pc-pd" value="' + esc(f.purchaseDate || todayISO()) + '"></div>' +
+        '<div class="field"><label>Loan Amount</label><input id="pc-loan" inputmode="decimal" value="' + esc(f.loanAmount != null && f.loanAmount !== '' ? m2(f.loanAmount) : '') + '"></div>' +
+        '<div class="field"><label>Lender</label><input id="pc-lender" type="text" value="' + esc(f.lender || '') + '"></div>' +
+      '</div>' +
+      '<div class="label">Buying Closing Costs</div>' +
+      '<div id="pc-lines"></div>' +
+      '<div id="pc-misc"></div>' +
+      '<button type="button" class="btn sm" id="pc-addmisc">Add Misc Item</button>' +
+      '<div class="sctot" id="pc-tot"></div>' +
+      '<div class="row" style="margin-top:16px"><button type="button" class="btn gold" id="pc-ok">Save And Move To Rehab</button><button type="button" class="btn" id="pc-cx">Cancel</button></div></div>',
+      function (m) {
+        m.onclick = function (e) { if (e.target === m) cancel(); };
+        function priceVal() {
+          var raw = m.querySelector('#pc-pp').value;
+          return raw === '' ? 0 : C.n(String(raw).replace('−', '-'));
+        }
+        function readNum(sel) {
+          var raw = m.querySelector(sel).value;
+          if (raw === '') return null;
+          return C.n(String(raw).replace('−', '-'));
+        }
+        function renderLines() {
+          var box = m.querySelector('#pc-lines');
+          box.innerHTML = lines.map(function (l, i) {
+            return '<div class="cline"><label>' + esc(l.label) + (l.credit ? ' <span class="meta">(credit)</span>' : '') + '</label>' +
+              (l.pct ? '<input inputmode="decimal" class="scpct" data-pct="' + i + '" value="' + esc(l.pctVal) + '" placeholder="%" aria-label="' + esc(l.label) + ' percent">' : '') +
+              '<input inputmode="decimal" data-amt="' + i + '" value="' + esc(l.amount) + '" placeholder="0.00" aria-label="' + esc(l.label) + ' amount"></div>';
+          }).join('');
+          box.querySelectorAll('[data-amt]').forEach(function (el) {
+            el.oninput = function () { lines[+el.getAttribute('data-amt')].amount = el.value; total(); };
+          });
+          box.querySelectorAll('[data-pct]').forEach(function (el) {
+            el.oninput = function () {
+              var i = +el.getAttribute('data-pct');
+              lines[i].pctVal = el.value;
+              if (el.value !== '') {
+                lines[i].amount = String(Math.round(priceVal() * C.n(el.value) / 100 * 100) / 100);
+                var a = box.querySelector('[data-amt="' + i + '"]');
+                if (a) a.value = lines[i].amount;
+              }
+              total();
+            };
+          });
+        }
+        function renderMisc() {
+          var box = m.querySelector('#pc-misc');
+          box.innerHTML = misc.map(function (l, i) {
+            return '<div class="cline"><input type="text" data-mname="' + i + '" value="' + esc(l.label) + '" placeholder="Item name" aria-label="Misc item name">' +
+              '<input inputmode="decimal" data-mamt="' + i + '" value="' + esc(l.amount) + '" placeholder="0.00" aria-label="Misc item amount">' +
+              '<button type="button" class="btn sm" data-rmmisc="' + i + '" aria-label="Remove misc item">Remove</button></div>';
+          }).join('');
+          box.querySelectorAll('[data-mname]').forEach(function (el) {
+            el.oninput = function () { misc[+el.getAttribute('data-mname')].label = el.value; };
+          });
+          box.querySelectorAll('[data-mamt]').forEach(function (el) {
+            el.oninput = function () { misc[+el.getAttribute('data-mamt')].amount = el.value; total(); };
+          });
+          box.querySelectorAll('[data-rmmisc]').forEach(function (b) {
+            b.onclick = function () { misc.splice(+b.getAttribute('data-rmmisc'), 1); renderMisc(); total(); };
+          });
+        }
+        function payload() {
+          return C.purchaseClosingOf({
+            purchasePrice: readNum('#pc-pp') == null ? 0 : readNum('#pc-pp'),
+            loanAmount: readNum('#pc-loan') == null ? 0 : readNum('#pc-loan'),
+            lender: m.querySelector('#pc-lender').value,
+            purchaseDate: m.querySelector('#pc-pd').value,
+            lines: lines.concat(misc).map(function (l) { return { label: l.label, amount: l.amount, credit: !!l.credit }; }),
+            recordedBuying: recorded
+          });
+        }
+        function total() {
+          var p = payload();
+          var html = '<div class="ln"><span>Buying Closing Costs</span><span class="num">' + money(p.buyingTotal) + '</span></div>';
+          if (p.recordedBuying) {
+            html += '<div class="ln"><span>Already Recorded</span><span class="num">' + money(p.recordedBuying) + '</span></div>' +
+              '<div class="ln tot"><span>Total Buying Costs</span><span class="num">' + money(p.buyingCombined) + '</span></div>';
+          }
+          html += '<div class="ln"><span>Loan Amount</span><span class="num">' + money(p.loanAmount) + '</span></div>' +
+            '<div class="ln tot"><span>Cash To Close</span><span class="num">' + money(p.cashToClose) + '</span></div>';
+          m.querySelector('#pc-tot').innerHTML = html;
+        }
+        m.querySelector('#pc-pp').oninput = function () {
+          lines.forEach(function (l, i) {
+            if (!l.pct || l.pctVal === '') return;
+            l.amount = String(Math.round(priceVal() * C.n(l.pctVal) / 100 * 100) / 100);
+            var a = m.querySelector('#pc-lines [data-amt="' + i + '"]');
+            if (a) a.value = l.amount;
+          });
+          total();
+        };
+        m.querySelector('#pc-loan').oninput = total;
+        m.querySelector('#pc-addmisc').onclick = function () { misc.push({ label: '', amount: '' }); renderMisc(); };
+        m.querySelector('#pc-cx').onclick = cancel;
+        m.querySelector('#pc-ok').onclick = function () {
+          var missing = misc.some(function (l) { return C.n(l.amount) && !String(l.label || '').trim(); });
+          if (missing) { toast('Add a name for each misc item.', true); return; }
+          var p = payload();
+          p.purchasePrice = readNum('#pc-pp');
+          p.loanAmount = readNum('#pc-loan');
+          p.lender = m.querySelector('#pc-lender').value;
+          p.purchaseDate = m.querySelector('#pc-pd').value;
+          if (escListener) document.removeEventListener('keydown', escListener);
+          escListener = null;
+          closeModal();
+          onSave(p);
+        };
+        escListener = function (ev) { if (ev.key === 'Escape') cancel(); };
+        document.addEventListener('keydown', escListener);
+        renderLines(); renderMisc(); total();
+      }
+    );
+  }
+  function savePurchaseClosing(f, data, thenOk, thenErr) {
+    var body = { id: f.id, purchaseDate: data.purchaseDate || '', costs: data.costs || [], lender: data.lender || '' };
+    if (data.purchasePrice != null && data.purchasePrice !== '') body.purchasePrice = data.purchasePrice;
+    if (data.loanAmount != null && data.loanAmount !== '') body.loanAmount = data.loanAmount;
+    var overlay = { status: 'Rehab' };
+    if (data.purchaseDate) overlay.purchaseDate = data.purchaseDate;
+    if (data.purchasePrice != null && data.purchasePrice !== '') overlay.purchasePrice = data.purchasePrice;
+    if (data.loanAmount != null && data.loanAmount !== '') overlay.loanAmount = data.loanAmount;
+    if (data.lender != null) overlay.lender = data.lender;
+    var finish = function () {
+      toast('Status set to Rehab. Purchase figures saved.');
+      expensesChanged();
+      viewFlip(f.id, overlay);
+      if (thenOk) thenOk();
+    };
+    var fallback = function () {
+      var chain = Promise.resolve();
+      (data.costs || []).forEach(function (c) {
+        chain = chain.then(function () {
+          return api('saveExpense', { expense: {
+            date: data.purchaseDate || todayISO(), payee: c.payee, category: c.category || 'Closing Costs',
+            amount: c.amount, method: 'Escrow', paidBy: 'Escrow (at purchase)', phase: 'Buying',
+            atSale: false, linkType: 'flip', linkId: f.id
+          } });
+        });
+      });
+      var patch = {};
+      if (data.purchasePrice != null && data.purchasePrice !== '') patch.purchasePrice = data.purchasePrice;
+      if (data.loanAmount != null && data.loanAmount !== '') patch.loanAmount = data.loanAmount;
+      if (data.lender != null) patch.lender = data.lender;
+      if (data.purchaseDate) patch.purchaseDate = data.purchaseDate;
+      return chain
+        .then(function () { return Object.keys(patch).length ? api('updateFlip', { id: f.id, flip: patch }) : null; })
+        .then(function () { return api('setStatus', { id: f.id, status: 'Rehab' }); })
+        .then(finish);
+    };
+    return api('closePurchase', body).then(finish).catch(function (e) {
+      if (e && e.code === 'BAD_REQUEST' && /Unknown action/i.test(e.message)) return fallback().catch(thenErr);
+      if (thenErr) thenErr(e);
+    });
+  }
+
   function viewFlip(id, overlay) {
     loading();
     getFlipLive(id).then(function (f) {
@@ -772,6 +943,10 @@
         };
         if (s === 'In Escrow' && f.status !== 'In Escrow' && can) {
           partnersPrompt(f, 'Who Are The Partners?', 'Save And Move To In Escrow', function () { go(); }, function () { st.value = f.status; });
+        } else if (s === 'Rehab' && f.status !== 'Rehab' && isOwner()) {
+          purchaseFiguresPrompt(f, function (data) {
+            savePurchaseClosing(f, data, null, function (e) { fail(e); st.value = f.status; });
+          }, function () { st.value = f.status; });
         } else if (s === 'Sold' && f.status === 'In Escrow' && isOwner()) {
           sellingCostsPrompt(f, function (data) {
             saveSaleClosing(f, data, null, function (e) { fail(e); st.value = f.status; });
@@ -1180,9 +1355,11 @@
     var host = opts.host;
     var html = '<h2>' + (isNew ? (hold ? 'New Holding' : 'New Flip') : 'Edit') + '</h2><p class="sub2">' + (led ? 'Type the base inputs (price, loan, rate, sale, rent, budget, dates). Cost totals are locked and come from expenses or the (i) line items on the Numbers card. Click an (i) on this page to add or edit its note. Remove Property is at the bottom.' : 'Enter the property, loan and dates. You can type a starting cost total; it is saved as one unitemized expense line you can break out later.') + '</p><div class="calcgrid">' + FIELDS.map(function (x) {
       var k = x[0], typ = x[2], der = DERIVED[k], ro = led && der, v = (led && der) ? g[k] : f[k];
+      var unitLocked = hold && !isNew && C.unitsOf && C.unitsOf(f).length && (k === 'monthlyIncome' || k === 'rentalStart');
+      if (unitLocked) ro = true;
       if (typ === 'num' && v !== '' && v != null) v = (k === 'interestRate') ? String(v) : m2(v);
       var closeK = (!isNew && led && k === 'buyClosingCosts') ? 'Buying' : (!isNew && led && k === 'sellingCosts') ? 'Selling' : '';
-      var lab = x[1] + (closeK ? closeInfo(closeK, x[1]) : (der ? lock('Total of this property’s expense entries — locked. Edit them via the (i) on Buying/Selling Closing Costs, or in Expenses.') + info(led ? 'Locked total of this property’s expense entries. Use (i) on the Numbers card for closing-cost line items, or Expenses for rehab, holding and other costs.' : 'On a new property, a typed total is saved as one unitemized expense line you can break out later.') : ''));
+      var lab = x[1] + (closeK ? closeInfo(closeK, x[1]) : (der ? lock('Total of this property’s expense entries — locked. Edit them via the (i) on Buying/Selling Closing Costs, or in Expenses.') + info(led ? 'Locked total of this property’s expense entries. Use (i) on the Numbers card for closing-cost line items, or Expenses for rehab, holding and other costs.' : 'On a new property, a typed total is saved as one unitemized expense line you can break out later.') : (unitLocked ? lock(k === 'monthlyIncome' ? 'Sum of unit rents — locked' : 'Earliest unit rented-since date — locked') : '')));
       if (typ === 'area') return '<div class="field" style="grid-column:1/-1"><label>' + lab + '</label><textarea data-k="' + k + '" rows="2">' + esc(v == null ? '' : v) + '</textarea></div>';
       return '<div class="field"><label>' + lab + '</label><input data-k="' + k + '" type="' + (typ === 'date' ? 'date' : 'text') + '" ' + (typ === 'num' ? 'inputmode="decimal"' : '') + (ro ? ' readonly tabindex="-1" class="ro"' : '') + ' value="' + esc(v == null ? '' : v) + '"></div>';
     }).join('') + (led ? '<div class="field"><label>Cash Invested' + lock('Each partner’s purchase cash plus the expenses they paid, live from the expense entries — locked') + info('Each partner’s purchase cash plus the expenses they paid, live from the expense entries') + '</label><input class="ro" readonly tabindex="-1" value="' + esc(m2(cashIn)) + '"></div>' : '') + '</div>' +
@@ -1231,6 +1408,7 @@
           });
         }
         Object.keys(DERIVED).forEach(function (k) { delete body[k]; });
+        delete body.cashInvested;
         var pr = P.read(); if (showPartnerError(root, pr.error)) return;
         if (isNew || !sameRows(rows, pr.rows)) body.investors = withMeta(f, pr.rows);
         if (U) {

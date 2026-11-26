@@ -167,10 +167,9 @@
     if (typeof o === 'string') { try { o = JSON.parse(o) || {}; } catch (e) { o = {}; } }
     return o && typeof o === 'object' && !Array.isArray(o) ? o : {};
   }
-  /** Owner-typed values (Edit Numbers → Override) win over the live expense totals for that field only. */
+  /** Owner-typed values may still override source inputs (price, loan, sale, credits, value, rent run-rate). Cost totals and cash invested always come from line items. */
   function applyOverrides(g) {
-    var o = parseOverrides(g), k, keys = ['buyClosingCosts', 'rehabSpent', 'holdingCosts', 'sellingCosts', 'otherCosts',
-      'purchasePrice', 'loanAmount', 'salePrice', 'rehabBudget', 'adjustments', 'purchaseCredits', 'currentValue', 'loanBalance', 'monthlyIncome', 'monthlyExpenses', 'cashInvested'];
+    var o = parseOverrides(g), k, keys = ['purchasePrice', 'loanAmount', 'salePrice', 'rehabBudget', 'adjustments', 'purchaseCredits', 'currentValue', 'loanBalance', 'monthlyIncome', 'monthlyExpenses'];
     for (var i = 0; i < keys.length; i++) {
       k = keys[i];
       if (o.hasOwnProperty(k) && o[k] !== '' && o[k] != null) g[k] = ledgerR2(ledgerNum(o[k]));
@@ -646,6 +645,58 @@
     };
   }
 
-  var api = { splitsOf: splitsOf, ledgerSum: ledgerSum, payerMatches: ledgerPayerMatches, estimate: estimate, flip: flip, holding: holding, holdingTaxYears: holdingTaxYears, holdingClassOf: holdingClassOf, unitsOf: unitsOf, depositsOf: depositsOf, earliestStart: earliestStart, monthlyRentOf: monthlyRentOf, live: ledgerLive, ledger: ledger, ledgers: ledgers, phaseOf: ledgerPhase, atSaleOf: ledgerAtSale, payerOf: ledgerPayer, PHASES: LEDGER_PHASES, DEAL_PHASES: LEDGER_DEAL, daysBetween: daysBetween, monthsBetween: monthsBetween, annualize: annualize, n: n, downPayment: downPayment, cashToPurchase: cashToPurchase, afterSaleNotAtSale: afterSaleNotAtSale, purchaseCreditsOf: purchaseCreditsOf, sellerCarryPayoffReductionOf: sellerCarryPayoffReductionOf, saleClosingOf: saleClosingOf, SALE_CLOSING_LINES: SALE_CLOSING_LINES, numbersDisplayOf: numbersDisplayOf, parseOverrides: parseOverrides, applyOverrides: applyOverrides };
+
+  /** Standard CA buyer closing-cost lines for the move-to-Rehab Purchase Figures modal. Credits are stored as negative Buying amounts. */
+  var PURCHASE_CLOSING_LINES = [
+    { key: 'escrowFee', label: 'Escrow Fee', pct: true },
+    { key: 'titleInsurance', label: 'Title Insurance', pct: true },
+    { key: 'loanDocs', label: 'Loan Docs / Processing' },
+    { key: 'lenderFees', label: 'Lender Fees' },
+    { key: 'recording', label: 'Recording' },
+    { key: 'notary', label: 'Notary' },
+    { key: 'courier', label: 'Courier' },
+    { key: 'wireFees', label: 'Wire Fees' },
+    { key: 'prepaidInsurance', label: 'Prepaid Insurance' },
+    { key: 'taxProration', label: 'Tax Proration' },
+    { key: 'hoaFees', label: 'HOA Fees' },
+    { key: 'purchaseCredits', label: 'Seller / Escrow Credits', credit: true }
+  ];
+  /**
+   * Display/payload helper for the Purchase Figures modal. Does not change flip math by itself.
+   * Zero amounts are omitted. Credit lines are emitted as negative Buying amounts so they reduce closing costs.
+   */
+  function purchaseClosingOf(input) {
+    input = input || {};
+    var price = n(input.purchasePrice);
+    var loan = n(input.loanAmount);
+    var costs = [];
+    (input.lines || []).forEach(function (l) {
+      var label = String((l && l.label) || '').trim();
+      var raw = l && l.amount;
+      if (raw === '' || raw == null) return;
+      var amount = r2(n(raw));
+      if (!label || !amount) return;
+      if (l.credit) amount = -Math.abs(amount);
+      costs.push({
+        payee: label, amount: amount, category: 'Closing Costs',
+        phase: 'Buying', atSale: false, paidBy: 'Escrow (at purchase)', method: 'Escrow'
+      });
+    });
+    var buyingTotal = r2(costs.reduce(function (t, l) { return t + l.amount; }, 0));
+    var recorded = r2(n(input.recordedBuying));
+    return {
+      purchasePrice: price,
+      loanAmount: loan,
+      lender: String(input.lender || ''),
+      purchaseDate: String(input.purchaseDate || ''),
+      costs: costs,
+      buyingTotal: buyingTotal,
+      recordedBuying: recorded,
+      buyingCombined: r2(buyingTotal + recorded),
+      cashToClose: r2(price - loan + buyingTotal + recorded)
+    };
+  }
+
+  var api = { splitsOf: splitsOf, ledgerSum: ledgerSum, payerMatches: ledgerPayerMatches, estimate: estimate, flip: flip, holding: holding, holdingTaxYears: holdingTaxYears, holdingClassOf: holdingClassOf, unitsOf: unitsOf, depositsOf: depositsOf, earliestStart: earliestStart, monthlyRentOf: monthlyRentOf, live: ledgerLive, ledger: ledger, ledgers: ledgers, phaseOf: ledgerPhase, atSaleOf: ledgerAtSale, payerOf: ledgerPayer, PHASES: LEDGER_PHASES, DEAL_PHASES: LEDGER_DEAL, daysBetween: daysBetween, monthsBetween: monthsBetween, annualize: annualize, n: n, downPayment: downPayment, cashToPurchase: cashToPurchase, afterSaleNotAtSale: afterSaleNotAtSale, purchaseCreditsOf: purchaseCreditsOf, sellerCarryPayoffReductionOf: sellerCarryPayoffReductionOf, saleClosingOf: saleClosingOf, SALE_CLOSING_LINES: SALE_CLOSING_LINES, numbersDisplayOf: numbersDisplayOf, purchaseClosingOf: purchaseClosingOf, PURCHASE_CLOSING_LINES: PURCHASE_CLOSING_LINES, parseOverrides: parseOverrides, applyOverrides: applyOverrides };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.FlipCalc = api;
 })(this);
