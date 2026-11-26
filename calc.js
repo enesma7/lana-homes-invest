@@ -740,6 +740,46 @@
     return true;
   }
 
-  var api = { splitsOf: splitsOf, ledgerSum: ledgerSum, payerMatches: ledgerPayerMatches, estimate: estimate, flip: flip, holding: holding, holdingTaxYears: holdingTaxYears, holdingClassOf: holdingClassOf, unitsOf: unitsOf, depositsOf: depositsOf, earliestStart: earliestStart, monthlyRentOf: monthlyRentOf, live: ledgerLive, ledger: ledger, ledgers: ledgers, phaseOf: ledgerPhase, atSaleOf: ledgerAtSale, payerOf: ledgerPayer, PHASES: LEDGER_PHASES, DEAL_PHASES: LEDGER_DEAL, daysBetween: daysBetween, monthsBetween: monthsBetween, annualize: annualize, n: n, downPayment: downPayment, cashToPurchase: cashToPurchase, afterSaleNotAtSale: afterSaleNotAtSale, purchaseCreditsOf: purchaseCreditsOf, saleClosingOf: saleClosingOf, SALE_CLOSING_LINES: SALE_CLOSING_LINES, numbersDisplayOf: numbersDisplayOf, purchaseClosingOf: purchaseClosingOf, PURCHASE_CLOSING_LINES: PURCHASE_CLOSING_LINES, parseOverrides: parseOverrides, applyOverrides: applyOverrides, normDate: normDate, fmtDate: fmtDate, purchaseDateOf: purchaseDateOf, applyFlipOverlay: applyFlipOverlay, shouldShowLoading: shouldShowLoading };
+
+  function expenseCatKey(e) { return String((e && e.category) || '').trim(); }
+  function expenseYearKey(e) {
+    var d = String((e && e.date) || '').trim();
+    return /^\d{4}/.test(d) ? d.slice(0, 4) : '';
+  }
+  function cents(x) { return Math.round((Number(x) || 0) * 100) / 100; }
+  /** Totals from the given expense line items (already filtered). All sums use the same rows. */
+  function expenseTotalsOf(rows, year) {
+    rows = rows || [];
+    year = String(year || '').slice(0, 4);
+    var byCat = {}, byYear = {}, catKeys = [], yearKeys = [], entries = 0, ytd = 0;
+    rows.forEach(function (e) {
+      var a = n(e.amount);
+      entries += a;
+      var c = expenseCatKey(e);
+      if (byCat[c] == null) { byCat[c] = 0; catKeys.push(c); }
+      byCat[c] += a;
+      var y = expenseYearKey(e);
+      if (byYear[y] == null) { byYear[y] = 0; yearKeys.push(y); }
+      byYear[y] += a;
+      if (year && y === year) ytd += a;
+    });
+    catKeys.sort(function (a, b) { return byCat[b] - byCat[a] || String(a).localeCompare(String(b)); });
+    yearKeys.sort(function (a, b) {
+      if (!a && !b) return 0;
+      if (!a) return 1;
+      if (!b) return -1;
+      return a < b ? 1 : a > b ? -1 : 0;
+    });
+    var catSum = 0, yearSum = 0, i;
+    for (i = 0; i < catKeys.length; i++) catSum += byCat[catKeys[i]];
+    for (i = 0; i < yearKeys.length; i++) yearSum += byYear[yearKeys[i]];
+    return {
+      byCat: byCat, byYear: byYear, catKeys: catKeys, yearKeys: yearKeys,
+      entries: cents(entries), catSum: cents(catSum), yearSum: cents(yearSum), ytd: cents(ytd),
+      ties: cents(catSum) === cents(yearSum) && cents(yearSum) === cents(entries) && cents(ytd) === cents(byYear[year] || 0)
+    };
+  }
+
+  var api = { splitsOf: splitsOf, ledgerSum: ledgerSum, payerMatches: ledgerPayerMatches, estimate: estimate, flip: flip, holding: holding, holdingTaxYears: holdingTaxYears, holdingClassOf: holdingClassOf, unitsOf: unitsOf, depositsOf: depositsOf, earliestStart: earliestStart, monthlyRentOf: monthlyRentOf, live: ledgerLive, ledger: ledger, ledgers: ledgers, phaseOf: ledgerPhase, atSaleOf: ledgerAtSale, payerOf: ledgerPayer, PHASES: LEDGER_PHASES, DEAL_PHASES: LEDGER_DEAL, daysBetween: daysBetween, monthsBetween: monthsBetween, annualize: annualize, n: n, downPayment: downPayment, cashToPurchase: cashToPurchase, afterSaleNotAtSale: afterSaleNotAtSale, purchaseCreditsOf: purchaseCreditsOf, saleClosingOf: saleClosingOf, SALE_CLOSING_LINES: SALE_CLOSING_LINES, numbersDisplayOf: numbersDisplayOf, purchaseClosingOf: purchaseClosingOf, PURCHASE_CLOSING_LINES: PURCHASE_CLOSING_LINES, parseOverrides: parseOverrides, applyOverrides: applyOverrides, normDate: normDate, fmtDate: fmtDate, purchaseDateOf: purchaseDateOf, applyFlipOverlay: applyFlipOverlay, shouldShowLoading: shouldShowLoading, expenseCatKey: expenseCatKey, expenseYearKey: expenseYearKey, expenseTotalsOf: expenseTotalsOf };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.FlipCalc = api;
 })(this);

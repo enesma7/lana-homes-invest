@@ -1964,42 +1964,101 @@
       drawExpenses();
     }).catch(fail);
   }
-  function drawExpenses() {
-    var rows = exFiltered(), f = EX.f;
-    var total = rows.reduce(function (s, e) { return s + e.amount; }, 0);
-    var byCat = {}; rows.forEach(function (e) { byCat[e.category || 'Other'] = (byCat[e.category || 'Other'] || 0) + e.amount; });
-    var byLink = {}; rows.forEach(function (e) { var k = exLinkLabel(e); byLink[k] = (byLink[k] || 0) + e.amount; });
-    var need = rows.filter(function (e) { return /Needs (Date|Amount)/.test(e.notes); }).length;
+  function knownCategories(extra) {
+    var seen = {}, out = [];
+    function add(v) {
+      v = String(v || '').trim();
+      if (!v || /^other$/i.test(v) || seen[v]) return;
+      seen[v] = 1; out.push(v);
+    }
+    CAT_FORM.forEach(add);
+    (EX.cats || []).forEach(add);
+    (EX.items || []).forEach(function (e) { add(e.category); });
+    if (extra) add(extra);
+    out.sort(function (a, b) { return a < b ? -1 : a > b ? 1 : 0; });
+    return out;
+  }
+  function expensesFilterOn() {
+    var f = EX.f; return !!(f.cat || f.from || f.to || f.q);
+  }
+  function expensesFilterPrompt() {
+    var f = EX.f;
     var opt = function (v, l, cur) { return '<option value="' + esc(v) + '"' + (v === cur ? ' selected' : '') + '>' + esc(l) + '</option>'; };
-    var html = '<div class="spread"><div><h1>LLC Expenses</h1><p class="lead">General and misc LANA HOMES LLC expenses not tied to a flip or holding. Property expenses live on each property. Only you can see this.</p></div><div class="row"><button class="btn" id="csv">Export CSV</button><button class="btn gold" id="nx">Add Expense</button></div></div>';
-    html += '<div class="card"><div class="calcgrid">' +
-      '<div class="field"><label>Category</label><select id="xc">' + opt('', 'All', f.cat) + EX.cats.map(function (c) { return opt(c, c, f.cat); }).join('') + '</select></div>' +
-      '<div class="field"><label>From</label><input type="date" id="xf" value="' + esc(f.from) + '"></div><div class="field"><label>To</label><input type="date" id="xt" value="' + esc(f.to) + '"></div>' +
-      '<div class="field"><label>Search</label><input id="xq" value="' + esc(f.q) + '" placeholder="Payee, notes, method"></div></div></div>';
-    html += '<div class="grid g4" style="margin-top:22px">' + kpi('Total', money(total), rows.length + ' entr' + (rows.length === 1 ? 'y' : 'ies')) +
-      kpi('This Year', money(rows.filter(function (e) { return (e.date || '').slice(0, 4) === todayISO().slice(0, 4); }).reduce(function (s, e) { return s + e.amount; }, 0)), todayISO().slice(0, 4) + ' entries') + kpi('Categories', String(Object.keys(byCat).length), 'In this view') +
-      kpi('Needs Info', String(need), 'Missing a date or amount', need ? 'bad' : '') + '</div>';
-    html += '<div class="grid g2" style="margin-top:22px"><div class="card"><h2>By Category</h2><div class="lines">' + Object.keys(byCat).sort(function (a, b) { return byCat[b] - byCat[a]; }).map(function (k) { return '<div class="ln"><span>' + esc(k) + lock('Category total — locked') + '</span><span class="num">' + money(byCat[k]) + '</span></div>'; }).join('') + '</div></div>' +
-      '<div class="card"><h2>Top Categories</h2>' + hbars(Object.keys(byCat).sort(function (a, b) { return byCat[b] - byCat[a]; }).slice(0, 6).map(function (k) { return { label: k, value: byCat[k], display: money(byCat[k], 0) }; })) + '</div></div>';
-    html += '<div class="label">Entries</div><div class="card tblwrap"><table class="t"><thead><tr><th>Date</th><th>Payee</th><th>Category</th><th>Paid By</th><th>Method</th><th class="r">Amount</th><th>Receipt</th><th></th></tr></thead><tbody>' +
-      (rows.length ? rows.map(function (e) {
+    var cats = knownCategories(f.cat && !/^other$/i.test(f.cat) ? f.cat : '');
+    if ((EX.items || []).some(function (e) { return /^other$/i.test(String(e.category || '')); }) || (f.cat && /^other$/i.test(f.cat))) {
+      if (cats.indexOf('Other') < 0) cats = cats.concat(['Other']);
+    }
+    modal(
+      '<h2>Filter</h2><div class="calcgrid">' +
+        '<div class="field"><label>Category</label><select id="xf-c">' + opt('', 'All', f.cat) + cats.map(function (c) { return opt(c, c, f.cat); }).join('') + '</select></div>' +
+        '<div class="field"><label>From</label><input type="date" id="xf-f" value="' + esc(f.from) + '"></div>' +
+        '<div class="field"><label>To</label><input type="date" id="xf-t" value="' + esc(f.to) + '"></div>' +
+        '<div class="field"><label>Search</label><input id="xf-q" value="' + esc(f.q) + '" placeholder="Payee, notes, method"></div>' +
+      '</div><div class="row" style="margin-top:16px"><button type="button" class="btn gold" id="xf-ok">Apply</button><button type="button" class="btn" id="xf-clear">Clear</button><button type="button" class="btn" id="xf-cx">Cancel</button></div>',
+      function (m) {
+        m.querySelector('#xf-ok').onclick = function () {
+          EX.f.cat = m.querySelector('#xf-c').value;
+          EX.f.from = m.querySelector('#xf-f').value;
+          EX.f.to = m.querySelector('#xf-t').value;
+          EX.f.q = m.querySelector('#xf-q').value;
+          closeModal();
+          drawExpenses();
+        };
+        m.querySelector('#xf-clear').onclick = function () {
+          EX.f = { link: '', cat: '', from: '', to: '', q: '' };
+          closeModal();
+          drawExpenses();
+        };
+        m.querySelector('#xf-cx').onclick = closeModal;
+      }
+    );
+  }
+  function expenseRowsTable(list) {
+    return '<div class="card tblwrap"><table class="t"><thead><tr><th>Date</th><th>Payee</th><th>Category</th><th>Paid By</th><th>Method</th><th class="r">Amount</th><th>Receipt</th><th></th></tr></thead><tbody>' +
+      (list.length ? list.map(function (e) {
         return '<tr class="erow" data-xe="' + esc(e.id) + '"><td>' + datePill(e) + '</td><td><b>' + esc(e.payee) + '</b>' + info(notesOf(e)) + '</td><td>' + esc(e.category) + (e.linkId ? '<div>' + phasePill(e) + '</div>' : '') + '</td><td>' + (payerOf(e) ? esc(payerOf(e)) : '<span class="meta">—</span>') + '</td><td class="meta">' + esc(e.method) + '</td>' +
           '<td class="r num">' + money(e.amount) + '</td><td>' + (e.receiptUrl ? '<a href="' + esc(e.receiptUrl) + '" target="_blank" rel="noopener">View</a>' : '<span class="meta">—</span>') + '</td>' +
           '<td class="r"><button type="button" class="btn sm" data-xe="' + esc(e.id) + '">Edit</button> <button type="button" class="btn sm danger" data-xd="' + esc(e.id) + '">Delete</button></td></tr>';
       }).join('') : '<tr><td colspan="8" class="empty">No expenses match.</td></tr>') + '</tbody></table></div>';
+  }
+  function bindExpenseRows(scope, items) {
+    var root = scope || document;
+    root.querySelectorAll('tr.erow').forEach(function (tr) { tr.onclick = function (ev) { if (ev.target.closest('button,a,.info')) return; var row = items.filter(function (e) { return e.id === tr.getAttribute('data-xe'); })[0]; if (row) editExpense(row); }; });
+    root.querySelectorAll('button[data-xe]').forEach(function (b) { b.onclick = function (ev) { ev.stopPropagation(); editExpense(items.filter(function (e) { return e.id === b.dataset.xe; })[0]); }; });
+    root.querySelectorAll('button[data-xd]').forEach(function (b) { b.onclick = function (ev) { ev.stopPropagation(); confirmBox('Delete Expense', '<p>Remove this entry from the ledger? Its receipt stays in Drive.</p>', 'Delete', function () { api('deleteExpense', { id: b.dataset.xd }).then(function () { expensesChanged(); toast('Deleted.'); (EX.after || viewExpenses)(); }).catch(fail); }); }; });
+  }
+  function drawExpenses() {
+    var rows = exFiltered();
+    var year = todayISO().slice(0, 4);
+    var t = C.expenseTotalsOf(rows, year);
+    var filt = expensesFilterOn();
+    var html = '<div class="spread"><div><h1>LLC Expenses</h1><p class="lead">General and misc LANA HOMES LLC expenses not tied to a flip or holding. Property expenses live on each property. Only you can see this.</p></div>' +
+      '<div class="row"><button class="btn gold" id="nx" type="button">Add Expense</button><button class="btn' + (filt ? ' on' : '') + '" id="xf" type="button">Filter' + (filt ? ' · On' : '') + '</button><button class="btn" id="csv" type="button">Export CSV</button></div></div>';
+    html += '<div class="grid g4" style="margin-top:22px">' + kpi('YTD Expenses', money(t.ytd), year) + '</div>';
+    html += '<div class="card" style="margin-top:22px"><h2>Categories</h2><div class="lines">' +
+      (t.catKeys.length ? t.catKeys.map(function (k) {
+        var lab = k || 'Needs Category';
+        return '<div class="ln"><span>' + esc(lab) + lock('Sum of this category’s entries — locked') + '</span><span class="num">' + money(t.byCat[k]) + '</span></div>';
+      }).join('') : '<p class="empty">No expenses match.</p>') + '</div></div>';
+    html += '<div class="label">Entries</div>';
+    if (!rows.length) {
+      html += '<p class="empty">No expenses match.</p>';
+    } else {
+      t.yearKeys.forEach(function (y) {
+        var group = rows.filter(function (e) { return C.expenseYearKey(e) === y; });
+        var open = y === year || (!y && !t.byYear[year] && y === t.yearKeys[0]);
+        html += '<details class="exyear"' + (open ? ' open' : '') + '><summary><span>' + esc(y || 'Needs Date') + '</span><span class="num">' + money(t.byYear[y]) + lock('Sum of this year’s entries — locked') + '</span></summary>' + expenseRowsTable(group) + '</details>';
+      });
+    }
     $app.innerHTML = html;
-    var bindF = function (id, k) { var el = document.getElementById(id); el.onchange = function () { EX.f[k] = el.value; drawExpenses(); }; };
-    bindF('xc', 'cat'); bindF('xf', 'from'); bindF('xt', 'to');
-    var xq = document.getElementById('xq'); xq.onchange = function () { EX.f.q = xq.value; drawExpenses(); };
     document.getElementById('nx').onclick = function () { editExpense(null); };
+    document.getElementById('xf').onclick = expensesFilterPrompt;
     document.getElementById('csv').onclick = function () { exportCsv(rows); };
-    document.querySelectorAll('tr.erow').forEach(function (tr) { tr.onclick = function (ev) { if (ev.target.closest('button,a,.info')) return; var row = EX.items.filter(function (e) { return e.id === tr.getAttribute('data-xe'); })[0]; if (row) editExpense(row); }; });
-    document.querySelectorAll('button[data-xe]').forEach(function (b) { b.onclick = function (ev) { ev.stopPropagation(); editExpense(EX.items.filter(function (e) { return e.id === b.dataset.xe; })[0]); }; });
-    document.querySelectorAll('button[data-xd]').forEach(function (b) { b.onclick = function (ev) { ev.stopPropagation(); confirmBox('Delete Expense', '<p>Remove this entry from the ledger? Its receipt stays in Drive.</p>', 'Delete', function () { api('deleteExpense', { id: b.dataset.xd }).then(function () { expensesChanged(); toast('Deleted.'); (EX.after || viewExpenses)(); }).catch(fail); }); }; });
+    bindExpenseRows($app, EX.items);
   }
   function csvCell(v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
   // Expenses tied to one flip or holding (owner only; the server rejects everyone else).
-  var CAT_FORM = ['Repairs & Materials', 'Labor', 'Material', 'Contractor', 'Holding', 'Utilities', 'Permits', 'Reports', 'Marketing', 'Closing Costs', 'Insurance', 'Property Taxes', 'Loan Interest', 'HOA', 'Purchase Cash', 'Other'];
+  var CAT_FORM = ['Repairs & Materials', 'Labor', 'Material', 'Contractor', 'Holding', 'Relocation', 'Utilities', 'Permits', 'Reports', 'Marketing', 'Closing Costs', 'Insurance', 'Property Taxes', 'Loan Interest', 'HOA', 'Purchase Cash'];
   var CAT_FORM_LABEL = { 'Repairs & Materials': 'Labor & Material' };
   var CAT_DISPLAY_ORDER = ['Labor & Material', 'Labor', 'Material', 'Contractor', 'Holding', 'Utilities', 'Permits', 'Reports', 'Marketing', 'Buying Closing Costs', 'Selling Closing Costs', 'Closing Costs', 'Insurance', 'Taxes', 'Financing/Interest'];
   function catDisplayOf(e) {
@@ -2025,12 +2084,13 @@
   function expenseCatOptions(selected) {
     var seen = {}, out = [];
     function add(v) {
+      v = String(v || '').trim();
       if (!v || seen[v]) return;
+      if (/^other$/i.test(v) && !/^other$/i.test(selected || '')) return;
       seen[v] = 1;
       out.push('<option value="' + esc(v) + '"' + (v === selected ? ' selected' : '') + '>' + esc(CAT_FORM_LABEL[v] || v) + '</option>');
     }
-    CAT_FORM.forEach(add);
-    (EX.cats || []).forEach(add);
+    knownCategories(selected).forEach(add);
     if (selected) add(selected);
     return out.join('');
   }
@@ -2132,7 +2192,7 @@
     var curPhase = isNew ? (opts.phase || e.phase || 'Rehab') : C.phaseOf(e), curAt = !isNew && C.atSaleOf(e);
     modal('<h2>' + (isNew ? 'Add Expense' : 'Edit Expense') + '</h2><div class="calcgrid">' +
       '<div class="field"><label>Date</label><input type="date" id="ed1" value="' + esc(e.date) + '"></div><div class="field"><label>Payee</label><input id="ed2" value="' + esc(e.payee || '') + '"></div>' +
-      '<div class="field"><label>Category</label><select id="ed3">' + expenseCatOptions(e.category) + '</select></div>' +
+      '<div class="field"><label>Category</label><select id="ed3">' + expenseCatOptions(e.category) + '<option value="__new__">+ New Category</option></select><div id="ed3new" hidden style="margin-top:8px"><input id="ed3n" placeholder="Category name" autocomplete="off"></div></div>' +
       '<div class="field"><label>Amount (Negative For A Refund)</label><input id="ed4" inputmode="decimal" value="' + esc(e.amount) + '"></div>' +
       '<div class="field"><label>Paid By</label><input id="ed9" list="ed9l" value="' + esc(payerOf(e)) + '" placeholder="Enrique, Zina, Aldo, Escrow"><datalist id="ed9l"><option>Enrique</option><option>Zina</option><option>Aldo</option><option>Escrow (at sale)</option><option>LANA HOMES LLC</option></datalist></div>' +
       '<div class="field"><label>Method</label><input id="ed5" value="' + esc(e.method || '') + '" placeholder="LLC Card, Zelle, Check"></div>' +
@@ -2142,11 +2202,17 @@
       '<div class="field"><label>Notes</label><textarea id="ed7" rows="2">' + esc(notesOf(e)) + '</textarea></div>' +
       '<div class="field"><label>Receipt (PDF Or Photo, Under 10 MB)' + (e.receiptUrl ? ' · <a href="' + esc(e.receiptUrl) + '" target="_blank" rel="noopener">Current</a>' : '') + '</label><input type="file" id="ed8" accept="application/pdf,image/jpeg,image/png,image/heic,image/webp"></div>' +
       '<div class="row"><button type="button" class="btn gold" id="exp-ok">Save</button><button type="button" class="btn" id="exp-cx">Cancel</button></div>', function (m) {
+      var catSel = m.querySelector('#ed3'), catNew = m.querySelector('#ed3new');
+      var syncCat = function () { catNew.hidden = catSel.value !== '__new__'; if (!catNew.hidden) { var n = m.querySelector('#ed3n'); if (n && !n.value) n.focus(); } };
+      catSel.onchange = syncCat; syncCat();
       m.querySelector('#exp-cx').onclick = closeModal;
       m.querySelector('#exp-ok').onclick = function () {
         var b = this; b.disabled = true;
         var link = document.getElementById('ed6').value;
-        var body = { id: e.id || '', date: document.getElementById('ed1').value, payee: document.getElementById('ed2').value, category: document.getElementById('ed3').value,
+        var catPick = catSel.value, category = catPick === '__new__' ? String((m.querySelector('#ed3n').value || '')).trim() : catPick;
+        if (!category || (catPick === '__new__' && !category)) { toast('Add a category name.', true); b.disabled = false; return; }
+        if (/^other$/i.test(category) && !(!isNew && /^other$/i.test(e.category || ''))) { toast('Pick a category.', true); b.disabled = false; return; }
+        var body = { id: e.id || '', date: document.getElementById('ed1').value, payee: document.getElementById('ed2').value, category: category,
           amount: C.n(document.getElementById('ed4').value), method: document.getElementById('ed5').value, paidBy: document.getElementById('ed9').value.trim(), notes: document.getElementById('ed7').value,
           linkType: link === 'general' ? 'general' : 'flip', linkId: link === 'general' ? '' : link };
         // Phase and At Sale are stored as fields (backend 1.4.0+) and as tags in front of the notes, so an edit never drops them.

@@ -498,3 +498,17 @@ a.doclink:hover{color:var(--gold2,#b08a3c)}
 .breakdn>summary:not(:has(.ln)){display:flex;align-items:center;font-size:12.5px;font-weight:600;color:var(--char)}
 .breakdn-body{padding-bottom:4px}
 .lines>.breakdn+.ln{border-top:0}
+
+
+/* LLC Expenses: year drop-downs and active Filter button */
+details.exyear{margin-top:12px;border:1px solid var(--line);border-radius:12px;background:#fff;overflow:hidden}
+details.exyear summary{cursor:pointer;font-size:14px;font-weight:700;display:flex;justify-content:space-between;align-items:center;gap:10px;list-style:none;padding:14px 18px;user-select:none;-webkit-user-select:none}
+details.exyear summary::-webkit-details-marker{display:none}
+details.exyear summary:after{content:"+";margin-left:4px;color:var(--meta);font-weight:600}
+details.exyear[open] summary:after{content:"−"}
+details.exyear summary .num{margin-left:auto;font-variant-numeric:tabular-nums}
+details.exyear .tblwrap, details.exyear table.t{margin:0;border:0;border-radius:0;box-shadow:none}
+.btn.on{border-color:var(--gold2);background:#FBF6EA}
+@media (max-width:700px){
+  details.exyear summary{padding:14px 14px;min-height:44px}
+}
