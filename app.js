@@ -1968,7 +1968,7 @@
     var seen = {}, out = [];
     function add(v) {
       v = String(v || '').trim();
-      if (!v || /^other$/i.test(v) || seen[v]) return;
+      if (!v || /^other$/i.test(v) || /^office\s*&\s*software$/i.test(v) || seen[v]) return;
       seen[v] = 1; out.push(v);
     }
     CAT_FORM.forEach(add);
@@ -1987,7 +1987,7 @@
     var seen = {}, cats = [];
     (EX.items || []).forEach(function (e) {
       var c = String(e.category || '').trim();
-      if (!c || /^other$/i.test(c) || seen[c]) return;
+      if (!c || /^other$/i.test(c) || /^office\s*&\s*software$/i.test(c) || seen[c]) return;
       seen[c] = 1; cats.push(c);
     });
     cats.sort(function (a, b) { return a < b ? -1 : a > b ? 1 : 0; });
@@ -2061,7 +2061,7 @@
   }
   function csvCell(v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
   // Expenses tied to one flip or holding (owner only; the server rejects everyone else).
-  var CAT_FORM = ['Repairs & Materials', 'Labor', 'Material', 'Contractor', 'Holding', 'Relocation', 'Utilities', 'Permits', 'Reports', 'Marketing', 'Closing Costs', 'Insurance', 'Property Taxes', 'Loan Interest', 'HOA', 'Purchase Cash', 'Lending Expenses'];
+  var CAT_FORM = ['Repairs & Materials', 'Labor', 'Material', 'Contractor', 'Holding', 'Relocation', 'Utilities', 'Permits', 'Reports', 'Marketing', 'Closing Costs', 'Insurance', 'Property Taxes', 'Loan Interest', 'HOA', 'Purchase Cash', 'Lending Expenses', 'Office Supplies', 'Software'];
   var CAT_FORM_LABEL = { 'Repairs & Materials': 'Labor & Material' };
   var CAT_DISPLAY_ORDER = ['Labor & Material', 'Labor', 'Material', 'Contractor', 'Holding', 'Utilities', 'Permits', 'Reports', 'Marketing', 'Buying Closing Costs', 'Selling Closing Costs', 'Closing Costs', 'Insurance', 'Taxes', 'Financing/Interest'];
   function catDisplayOf(e) {
@@ -2088,7 +2088,7 @@
     var seen = {}, out = [];
     function add(v) {
       v = String(v || '').trim();
-      if (!v || seen[v] || /^other$/i.test(v)) return;
+      if (!v || seen[v] || /^other$/i.test(v) || /^office\s*&\s*software$/i.test(v)) return;
       seen[v] = 1;
       out.push('<option value="' + esc(v) + '"' + (v === selected ? ' selected' : '') + '>' + esc(CAT_FORM_LABEL[v] || v) + '</option>');
     }
@@ -2213,7 +2213,7 @@
         var link = document.getElementById('ed6').value;
         var catPick = catSel.value, category = catPick === '__new__' ? String((m.querySelector('#ed3n').value || '')).trim() : catPick;
         if (!category || (catPick === '__new__' && !category)) { toast('Add a category name.', true); b.disabled = false; return; }
-        if (/^other$/i.test(category)) { toast('Pick a category.', true); b.disabled = false; return; }
+        if (/^other$/i.test(category) || /^office\s*&\s*software$/i.test(category)) { toast('Pick a category.', true); b.disabled = false; return; }
         var body = { id: e.id || '', date: document.getElementById('ed1').value, payee: document.getElementById('ed2').value, category: category,
           amount: C.n(document.getElementById('ed4').value), method: document.getElementById('ed5').value, paidBy: document.getElementById('ed9').value.trim(), notes: document.getElementById('ed7').value,
           linkType: link === 'general' ? 'general' : 'flip', linkId: link === 'general' ? '' : link };
