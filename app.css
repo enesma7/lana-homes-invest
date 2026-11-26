@@ -119,7 +119,9 @@ table.t td.r,table.t th.r{text-align:right}
 .tblwrap table.t{min-width:560px}
 .lines .ln{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px dashed var(--line2);font-size:13.5px}
 .lines .ln span:first-child{color:var(--char)}
-.lines .ln .lnl,.lines .ln span:first-child{display:inline-flex;align-items:center;flex-wrap:wrap;flex:0 1 auto;min-width:0}
+.lines .ln{align-items:center}
+.lines .ln .lnl,.lines .ln span:first-child{display:inline-flex;align-items:center;flex-wrap:nowrap;flex:0 1 auto;min-width:0}
+.lines .ln .num{white-space:nowrap;flex:none}
 .lines .ln.tot{font-weight:800;border-bottom:none;padding-top:11px}
 .lines .ln.tot span:first-child{color:var(--ink)}
 .lines .ln.note-only{border-bottom:none;padding-top:2px;justify-content:flex-start}
@@ -357,7 +359,7 @@ input.ro{background:var(--soft);color:var(--char);cursor:default}
 .tnote .tm button{border:0;background:none;color:var(--meta);font-size:12px;cursor:pointer;padding:0;text-decoration:underline}
 .info{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;margin-left:5px;padding:0;border:1px solid #C9C9CF;border-radius:50%;background:#fff;color:var(--meta);font:italic 700 10px/1 Georgia,serif;cursor:pointer;vertical-align:1px;flex:none;-webkit-tap-highlight-color:transparent}
 .info:hover,.info:focus-visible{border-color:var(--gold2,#D5BE87);color:var(--ink);outline:none}
-.info::before{content:"";position:absolute;width:30px;height:30px;margin:-8px}
+.info::before{content:"";position:absolute;left:50%;top:50%;width:44px;height:44px;transform:translate(-50%,-50%)}
 .info{position:relative}
 #tip{position:fixed;z-index:9999;background:#000007;color:#fff;font-size:12.5px;line-height:1.45;padding:9px 12px;border-radius:10px;box-shadow:0 8px 24px rgba(0,0,7,.25);pointer-events:auto;white-space:normal}
 .kpi .k{display:flex;align-items:center}
@@ -470,3 +472,14 @@ a.doclink:hover{color:var(--gold2,#b08a3c)}
   .docacts .btn{min-height:44px;flex:1;justify-content:center}
   .docrenacts .btn{min-height:44px;flex:1;justify-content:center}
 }
+
+/* Closed-by-default breakdowns (unit rows, expense detail, payout lines) */
+.breakdn{border-bottom:1px dashed var(--line2)}
+.breakdn>summary{list-style:none;cursor:pointer;display:block;position:relative;padding-left:18px;min-height:44px;box-sizing:border-box}
+.breakdn>summary::-webkit-details-marker,.breakdn>summary::marker{display:none;content:""}
+.breakdn>summary::before{content:"";position:absolute;left:2px;top:50%;width:6px;height:6px;border-right:2px solid var(--char);border-bottom:2px solid var(--char);transform:translateY(-70%) rotate(-45deg);pointer-events:none}
+.breakdn[open]>summary::before{transform:translateY(-40%) rotate(45deg)}
+.breakdn>summary .ln{border-bottom:none;width:100%;padding-top:8px;padding-bottom:8px}
+.breakdn>summary:not(:has(.ln)){display:flex;align-items:center;font-size:12.5px;font-weight:600;color:var(--char)}
+.breakdn-body{padding-bottom:4px}
+.lines>.breakdn+.ln{border-top:0}

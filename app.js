@@ -373,8 +373,8 @@
         '<div class="row" style="margin-bottom:18px"><a class="btn" href="#/holdings">All Holdings</a></div></div>';
       html += '<div class="grid g4">' +
         kpi('Monthly Cash Flow', known.length ? sMoney(hs('monthlyCashFlow'), 0) : '<span class="pill warn">Needs Data</span>', money(hs('rent'), 0) + ' rent − ' + money(hs('expenses'), 0) + ' expenses', 'good') +
-        kpi('Annual NOI', known.length ? sMoney(noi, 0) : '—', 'Rent minus operating expenses', 'good') +
-        kpi('Cash-On-Cash', sPct(coc), 'Annual cash flow ÷ cash in', null, { v: coc, max: 1, tone: coc < 0 ? 'bad' : 'good', label: pct(coc, 0) }) +
+        kpi('Annual NOI', known.length ? sMoney(noi, 0) : '—', '', 'good') +
+        kpi('Cash-On-Cash', sPct(coc), '', null, { v: coc, max: 1, tone: coc < 0 ? 'bad' : 'good', label: pct(coc, 0) }) +
         kpi('Equity', sMoney(eq, 0), pct(eqGain, 0) + ' gain on cash in', eq < 0 ? 'bad' : 'good', { v: eqGain, max: 1, tone: eqGain < 0 ? 'bad' : 'good', label: pct(eqGain, 0) }) + '</div>';
       html += '<div class="grid g21" style="margin-top:16px"><div class="card rule"><h2>Rent Vs Expenses</h2><p class="meta">Monthly, by property</p>' +
         vbars(hx.map(function (r) { return { label: r.f.address, a: r.x.rent || 0, b: r.x.expenses || 0 }; }), { id: 'vbE', name: 'Rent', key: '#1FA855' }, { id: 'vbG', name: 'Expenses', key: '#D5BE87' }) + '</div>' +
@@ -383,7 +383,7 @@
         '<div class="ln"><span>Cash In</span><span class="num">' + money(cash, 0) + '</span></div>' +
         '<div class="ln"><span>Loan Balances</span><span class="num">' + money(hs('loanBalance'), 0) + '</span></div>' +
         '<div class="ln"><span>Monthly Rent</span><span class="num">' + money(hs('rent'), 0) + '</span></div>' +
-        '<div class="ln"><span>Deposits Held (Owed To Tenants)</span><span class="num">' + money(deps, 0) + '</span></div>' +
+        '<div class="ln"><span>Security Deposits</span><span class="num">' + money(deps, 0) + '</span></div>' +
         '<div class="ln tot"><span>Cash Flow / Year</span><span class="num">' + sMoney(hs('annualCashFlow'), 0) + '</span></div></div></div></div>';
       html += '<div class="label">Holdings</div>' + holdingCards(list);
       $app.innerHTML = html; bindCards(); animate();
@@ -407,6 +407,11 @@
     var canEd = !!(TIPS && key && isOwner());
     if (!t && !(canEd && TIPS.edit)) return '';
     return ' <button type="button" class="info' + (t ? '' : ' add') + '" aria-label="' + (t ? 'Details' : 'Add a note') + '" data-tip="' + esc(t) + '"' + (canEd ? ' data-key="' + esc(key) + '" data-def="' + esc(tip || '') + '"' : '') + '>' + (t ? 'i' : '+') + '</button>';
+  }
+  // Closed-by-default drop-down for a total row plus its breakdown (units, expense detail, payout lines).
+  function breakDown(summaryHtml, innerHtml) {
+    if (!innerHtml) return summaryHtml;
+    return '<details class="breakdn"><summary>' + summaryHtml + '</summary><div class="breakdn-body">' + innerHtml + '</div></details>';
   }
   function tipEditor(key, def) {
     var f = TIPS && TIPS.f; if (!f || !isOwner()) return;
@@ -529,7 +534,7 @@
       markTab(sold ? '#/archive' : '#/flips');
       var ln = function (k, v, cls, opts) {
         opts = opts || {};
-        var icon = opts.close ? closeInfo(opts.close, k) : (opts.lock ? lock(opts.lock) + info('', 'ln:' + plain(k)) : info('', 'ln:' + plain(k)));
+        var icon = opts.close ? closeInfo(opts.close, k) : ((opts.lock ? lock(opts.lock) : '') + info(opts.tip || '', 'ln:' + plain(k)));
         return '<div class="ln' + (cls ? ' ' + cls : '') + '"><span>' + k + icon + '</span><span class="num">' + v + '</span></div>';
       };
       var budgetPct = f.rehabBudget ? Math.min(1.5, f.rehabSpent / f.rehabBudget) : 0;
@@ -539,17 +544,17 @@
         tipToggle({ can: can }) + '<button class="btn" id="pdf" type="button">PDF Report</button>' + (can ? '<button class="btn" id="invs">Investors</button>' : '') + (can ? '<button class="btn gold" id="inv">Invite User</button>' : '') + '</div></div>';
       if (TIPS && TIPS.edit && can) html += '<div id="edpanel" class="card rule" style="margin-top:18px"></div>';
       html += '<div class="grid g4" style="margin-top:4px">' +
-        kpi(sold ? 'Profit' : 'Projected Profit', sMoney(x.profit, 0), sold ? 'Sale minus every cost' : 'At a ' + money(f.salePrice, 0) + ' sale', x.profit < 0 ? 'bad' : 'good') +
+        kpi(sold ? 'Profit' : 'Projected Profit', sMoney(x.profit, 0), sold ? '' : 'At a ' + money(f.salePrice, 0) + ' sale', x.profit < 0 ? 'bad' : 'good') +
         kpi('Return On Cash', sPct(x.roiCash), 'On ' + money(f.cashInvested, 0) + ' cash in') +
         kpi('Return On Total Cost', sPct(x.roiCost), 'On ' + money(x.totalCost, 0) + ' all-in') +
         kpi(sold ? annualizedDisplay(x).title : 'Days Held So Far', sold ? annualizedDisplay(x).html : (x.daysHeld || '—'),
           sold ? (x.daysHeld ? x.daysHeld + ' days, purchase to sale' : 'Add the sale close date') : 'Since ' + (fmtDate(f.purchaseDate) || 'purchase')) + '</div>';
       html += '<div class="grid g2" style="margin-top:22px"><div class="card rule"><h2>The Numbers' + info(f.notes || '', 'h:Notes') + '</h2><div class="lines">' +
         ln('Purchase Price', money(f.purchasePrice)) + ln('Loan' + (f.lender ? ' · ' + esc(f.lender) : ''), money(f.loanAmount)) + (f.interestRate ? ln('Interest Rate', (Number(f.interestRate) || 0).toFixed(3).replace(/\.?0+$/, '') + '%') : '') +
-        ln('Buying Closing Costs', money(f.buyClosingCosts), '', { close: 'Buying' }) + ln('Rehab Spent', money(f.rehabSpent), '', { lock: 'Total of this property’s Rehab expense entries — locked' }) + ln('Holding Costs (Interest, Taxes, Insurance)', money(f.holdingCosts), '', { lock: 'Total of this property’s Holding expense entries — locked' }) +
+        ln('Buying Closing Costs', money(f.buyClosingCosts), '', { close: 'Buying' }) + ln('Rehab Spent', money(f.rehabSpent), '', { lock: 'Total of this property’s Rehab expense entries — locked' }) + ln('Holding Costs', money(f.holdingCosts), '', { lock: 'Total of this property’s Holding expense entries — locked' }) +
         ln('Selling Costs', money(f.sellingCosts), '', { close: 'Selling' }) + (f.otherCosts ? ln(esc(f.otherCostsLabel || 'Other Costs'), money(f.otherCosts), '', { lock: 'Total of After-Sale expense entries — locked' }) : '') +
         (f.adjustments ? ln(esc(f.adjustmentsLabel || 'Credits'), '<span class="pos">' + money(f.adjustments) + '</span>') : '') +
-        (f.purchaseCredits ? ln('Purchase Credits' + lock('Purchase-side credits (for example escrow credits at purchase). They reduce total cost and cash in. They are not added to sale Net Proceeds.'), '<span class="pos">' + money(f.purchaseCredits) + '</span>') : '') +
+        (f.purchaseCredits ? ln('Purchase Credits', '<span class="pos">' + money(f.purchaseCredits) + '</span>', '', { tip: 'Purchase-side credits (for example escrow credits at purchase). They reduce total cost and cash in. They are not added to sale Net Proceeds.' }) : '') +
         ln('Total Cost', money(x.totalCost), 'tot', { lock: 'Sum of price and costs minus credits — locked' }) + ln(sold ? 'Sale Price' : 'Projected Sale Price', money(f.salePrice), 'tot') + ln(sold ? 'Profit' : 'Projected Profit', sMoney(x.profit), 'tot', { lock: 'Sale price minus total cost — locked' }) + '</div></div>';
       html += '<div class="card rule"><h2>Rehab Budget Vs Spent</h2><p class="meta">' + money(f.rehabSpent, 0) + ' of ' + money(f.rehabBudget, 0) + '</p><div class="bar" style="margin:10px 0 6px"><i class="' + (budgetPct > 1 ? 'over' : '') + '" style="width:' + Math.min(100, budgetPct * 100).toFixed(1) + '%"></i></div>' +
         '<p class="sub2">' + (x.rehabVariance > 0 ? '<span class="neg">' + money(x.rehabVariance) + '</span> over budget' : x.rehabVariance < 0 ? '<span class="pos">' + money(-x.rehabVariance) + '</span> under budget' : 'On budget') + '</p>' +
@@ -559,8 +564,8 @@
       if (x.payout) html += payoutCard(x.payout);
       if (own) html += '<div class="label">Expenses</div><div id="proex"></div>';
       html += '<div class="label">Inventory Needs List</div><div id="invlist"></div>';
-      html += '<div class="label">Documents</div><div id="tdocs"></div>';
-      html += '<div class="label">Internal Notes</div><div id="tnotes"></div>';
+      html += '<div class="label">Documents' + info('PDF, JPG or PNG, under 10 MB. Click the name to open.', 'h:Documents') + '</div><div id="tdocs"></div>';
+      html += '<div class="label">Internal Notes' + info('Internal only. Not included in PDF reports.', 'h:InternalNotes') + '</div><div id="tnotes"></div>';
       if (f.access) {
         html += '<div class="label">Who Can See This Flip</div><div class="card tblwrap"><table class="t"><thead><tr><th>User</th><th>Role</th><th>Invited</th><th>Last Sign-In</th><th></th></tr></thead><tbody>' +
           (f.access.length ? f.access.map(function (a) {
@@ -633,7 +638,7 @@
     host.innerHTML = '<div class="card">' + rows +
       '<div class="row" style="margin-top:12px"><button type="button" class="btn sm gold" id="docadd">Upload Document</button>' +
       '<input type="file" id="docfile" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" hidden></div>' +
-      '<p class="sub2" style="margin:8px 0 0">PDF, JPG or PNG, under 10 MB. Stored in this property’s folder. Click the name to open.</p></div>';
+      '</div>';
     var reload = function () { api('getFlip', { id: f.id }).then(function (g) { f.documents = g.documents; renderDocuments(f); }).catch(fail); };
     var pick = document.getElementById('docfile');
     document.getElementById('docadd').onclick = function () { pick.click(); };
@@ -685,7 +690,7 @@
     var host = document.getElementById('tnotes'); if (!host) return;
     if (!Array.isArray(f.comments)) { host.innerHTML = '<div class="card"><p class="empty">Notes turn on with the backend update (1.4.0).</p></div>'; return; }
     var list = f.comments.slice().sort(function (a, b) { return a.createdAt < b.createdAt ? 1 : -1; });
-    host.innerHTML = '<div class="card"><div class="field"><textarea id="tnew" rows="2" placeholder="Add a note for this property. Internal only, not in PDF reports."></textarea></div><div class="row"><button class="btn sm gold" id="tadd">Add Note</button></div>' +
+    host.innerHTML = '<div class="card"><div class="field"><textarea id="tnew" rows="2" placeholder="Add a note for this property."></textarea></div><div class="row"><button class="btn sm gold" id="tadd">Add Note</button></div>' +
       (list.length ? '<div style="margin-top:12px">' + list.map(function (c) {
         return '<div class="tnote" data-id="' + esc(c.id) + '"><div class="tt">' + esc(c.text) + '</div><div class="tm"><span class="meta mnote">' + esc(c.name || 'User') + ' · ' + new Date(c.updatedAt || c.createdAt).toLocaleString() + (c.updatedAt && c.updatedAt !== c.createdAt ? ' (edited)' : '') + '</span>' +
           (c.canEdit ? '<button data-te="' + esc(c.id) + '">Edit</button><button data-td="' + esc(c.id) + '">Delete</button>' : '') + '</div></div>';
@@ -707,12 +712,19 @@
 
   // Purchase To Payout: cash put in at purchase, who funded what, what the sale closing paid off, and who got paid.
   function payoutCard(p) {
-    var ln = function (r, cls) {
+    var ln = function (r, cls, tip) {
       var name = String(r[0] || '');
       var lk = cls === 'tot' || /^(Cash To Purchase|Total Cash Invested|Total To Partners|Net Proceeds|Buying Closing Costs)\b/i.test(name);
-      return '<div class="ln' + (cls ? ' ' + cls : '') + (lk ? ' locked' : '') + '"><span class="lnl">' + esc(name) + (lk ? lock('Calculated total — locked') : '') + info(r[2], 'po:' + plain(name)) + '</span><span class="num">' + (r[1] < 0 ? '<span class="neg">−' + money(-r[1]) + '</span>' : money(r[1])) + '</span></div>';
+      var note = tip || r[2];
+      return '<div class="ln' + (cls ? ' ' + cls : '') + (lk ? ' locked' : '') + '"><span class="lnl">' + esc(name) + (lk ? lock('Calculated total — locked') : '') + info(note, 'po:' + plain(name)) + '</span><span class="num">' + (r[1] < 0 ? '<span class="neg">−' + money(-r[1]) + '</span>' : money(r[1])) + '</span></div>';
     };
-    var block = function (title, rows, tot, note) { return rows && rows.length ? '<div class="label" style="margin:14px 0 4px">' + esc(title) + '</div><div class="lines">' + rows.map(function (r) { return ln(r); }).join('') + (tot ? ln(tot, 'tot') : '') + (note ? '<div class="ln note-only"><span class="mnote">' + esc(note) + '</span></div>' : '') + '</div>' : ''; };
+    var block = function (title, rows, tot, note) {
+      if (!rows || !rows.length) return '';
+      var body = rows.map(function (r) { return ln(r); }).join('');
+      return '<div class="label" style="margin:14px 0 4px">' + esc(title) + '</div><div class="lines">' +
+        (body ? '<details class="breakdn"><summary>Breakdown</summary><div class="breakdn-body">' + body + '</div></details>' : '') +
+        (tot ? ln(tot, 'tot', note) : '') + '</div>';
+    };
     return '<div class="label">' + esc(p.title || 'Purchase To Payout') + info(p.source ? 'Source: ' + p.source : '', 'po:Title') + '</div><div class="grid g2"><div class="card rule"><h2>Invested</h2>' +
       block('At Purchase', p.purchase, p.purchaseTotal) + block('Cash Invested By Partner', p.capital, p.capitalTotal) + '</div>' +
       '<div class="card rule"><h2>' + esc(p.saleTitle || 'Paid Out') + '</h2>' +
@@ -737,13 +749,13 @@
   var FLIP_FIELDS = [['address', 'Property Address', 'text'], ['city', 'City, State Zip', 'text'], ['purchaseDate', 'Purchase Close Date', 'date'], ['saleDate', 'Sale Close Date', 'date'],
     ['purchasePrice', 'Purchase Price', 'num'], ['loanAmount', 'Loan Amount', 'num'], ['lender', 'Lender', 'text'], ['interestRate', 'Interest Rate (% / year)', 'num'], ['buyClosingCosts', 'Buying Closing Costs', 'num'],
     ['rehabBudget', 'Rehab Budget', 'num'], ['rehabSpent', 'Rehab Spent', 'num'], ['holdingCosts', 'Holding Costs', 'num'], ['sellingCosts', 'Selling Costs', 'num'],
-    ['adjustments', 'Credits (Reduce Cost)', 'num'], ['adjustmentsLabel', 'Credits Label', 'text'],
-    ['purchaseCredits', 'Purchase Credits (Reduce Cost; Not In Net Proceeds)', 'num'],
-    ['salePrice', 'Sale Price (Or Projected)', 'num'], ['datesNote', 'Date Notes', 'text'], ['notes', 'Property Notes', 'area']];
-  var HOLD_FIELDS = [['address', 'Property Address', 'text'], ['city', 'City, State Zip', 'text'], ['purchaseDate', 'Purchase Close Date', 'date'], ['rentalStart', 'Rented Since', 'date'], ['saleDate', 'Sale Close Date (If Sold)', 'date'],
+    ['adjustments', 'Credits', 'num'], ['adjustmentsLabel', 'Credits Label', 'text'],
+    ['purchaseCredits', 'Purchase Credits', 'num'],
+    ['salePrice', 'Sale Price', 'num'], ['datesNote', 'Date Notes', 'text'], ['notes', 'Property Notes', 'area']];
+  var HOLD_FIELDS = [['address', 'Property Address', 'text'], ['city', 'City, State Zip', 'text'], ['purchaseDate', 'Purchase Close Date', 'date'], ['rentalStart', 'Rented Since', 'date'], ['saleDate', 'Sale Close Date', 'date'],
     ['purchasePrice', 'Purchase Price', 'num'], ['buyClosingCosts', 'Closing Costs', 'num'], ['loanAmount', 'Original Loan', 'num'], ['lender', 'Lender', 'text'], ['interestRate', 'Interest Rate (% / year)', 'num'], ['loanBalance', 'Current Loan Balance', 'num'],
     ['rehabBudget', 'Improvements Budget', 'num'], ['rehabSpent', 'Improvements Spent', 'num'], ['currentValue', 'Current Value', 'num'],
-    ['monthlyIncome', 'Monthly Income (Rent)', 'num'], ['monthlyExpenses', 'Monthly Expenses', 'num'], ['salePrice', 'Sale Price (If Sold)', 'num'], ['datesNote', 'Date Notes', 'text'], ['notes', 'Property Notes', 'area']];
+    ['monthlyIncome', 'Monthly Income', 'num'], ['monthlyExpenses', 'Monthly Expenses', 'num'], ['salePrice', 'Sale Price', 'num'], ['datesNote', 'Date Notes', 'text'], ['notes', 'Property Notes', 'area']];
   // Cost-bucket totals come from expense entries (or from (i) line items for closing costs) and are locked on existing deals.
   // On a brand-new property, a typed starting total is saved as one unitemized expense line — existing deals are never rewritten that way.
   var DERIVED = { buyClosingCosts: 'Buying', rehabSpent: 'Rehab', holdingCosts: 'Holding', sellingCosts: 'Selling', otherCosts: 'After Sale' };
@@ -917,7 +929,7 @@
 
 
   function unitsHtml() {
-    return '<div class="uedit" id="ed-units"><div class="urows"></div><button type="button" class="btn sm" data-uadd>+ Add Unit</button><p class="sub2" style="margin:8px 0 0">Monthly rent and Rented Since on this property are the total and the earliest unit date. Deposits are a liability owed to tenants, not income.</p></div>';
+    return '<div class="uedit" id="ed-units"><div class="urows"></div><button type="button" class="btn sm" data-uadd>+ Add Unit</button></div>';
   }
   function bindUnits(host, units) {
     units = (units || []).map(function (u) { return { name: u.name || '', rent: u.rent, rentalStart: u.rentalStart || '', deposit: u.deposit }; });
@@ -929,7 +941,7 @@
           '<label>Unit<input type="text" data-uf="name" value="' + esc(u.name) + '" placeholder="Unit A"></label>' +
           '<label>Monthly Rent<input type="text" inputmode="decimal" data-uf="rent" value="' + esc(u.rent === 0 || u.rent ? String(u.rent) : '') + '" placeholder="0.00"></label>' +
           '<label>Rented Since<input type="date" data-uf="rentalStart" value="' + esc(u.rentalStart || '') + '"></label>' +
-          '<label>Deposit (optional)<input type="text" inputmode="decimal" data-uf="deposit" value="' + esc(u.deposit === 0 || u.deposit ? String(u.deposit) : '') + '" placeholder="Optional"></label>' +
+          '<label>Deposit<input type="text" inputmode="decimal" data-uf="deposit" value="' + esc(u.deposit === 0 || u.deposit ? String(u.deposit) : '') + '" placeholder="Optional"></label>' +
           '<button type="button" class="btn sm" data-udel aria-label="Remove unit">Remove</button>' +
           '</div>';
       }).join('');
@@ -1356,12 +1368,12 @@
     lines.push(row(['Recurring Holding Expenses', Number(yearRec.recurring || 0).toFixed(2)]));
     lines.push(row(['Non-Recurring Holding Expenses', Number(yearRec.nonRecurring || 0).toFixed(2)]));
     lines.push(row(['Net Cash Flow', Number(yearRec.net || 0).toFixed(2)]));
-    if (deposits) lines.push(row(['Security Deposits Held (owed to tenants, not income)', Number(deposits).toFixed(2)]));
-    lines.push(row(['Capital / Improvements (not in net cash flow)', Number(yearRec.capital || 0).toFixed(2)]));
+    if (deposits) lines.push(row(['Security Deposits', Number(deposits).toFixed(2)]));
+    lines.push(row(['Purchase & Improvements', Number(yearRec.capital || 0).toFixed(2)]));
     if ((yearRec.units || []).length) {
       lines.push('');
       lines.push(row(['Rent By Unit']));
-      lines.push(row(['Unit', 'Rented Since', 'Months', 'Monthly Rent', 'Rent Collected', 'Deposit (liability, not income)']));
+      lines.push(row(['Unit', 'Rented Since', 'Months', 'Monthly Rent', 'Rent Collected', 'Deposit']));
       yearRec.units.forEach(function (u) {
         lines.push(row([u.name || 'Unit', u.rentalStart || '', String(u.monthsRented || 0), Number(u.rent || 0).toFixed(2), Number(u.rentToDate || 0).toFixed(2), u.deposit != null && u.deposit !== '' ? Number(u.deposit).toFixed(2) : '']));
       });
@@ -1375,7 +1387,7 @@
     });
     if ((yearRec.capitalRows || []).length) {
       lines.push('');
-      lines.push(row(['Capital / Improvements (not in net cash flow)']));
+      lines.push(row(['Purchase & Improvements']));
       lines.push(row(['Date', 'Payee', 'Category', 'Amount', 'Paid By', 'Method', 'Counts As', 'Notes']));
       yearRec.capitalRows.forEach(function (e) {
         lines.push(row([e.date || '', e.payee || '', e.category || '', Number(e.amount || 0).toFixed(2), payerOf(e), e.method || '', C.phaseOf(e), notesOf(e)]));
@@ -1392,35 +1404,36 @@
       var tax = C.holdingTaxYears(f, list || [], todayISO());
       var ytd = tax.ytd, hist = tax.history || [], dep = depositsHeld(f);
       var html = '';
+      var capTip = 'One-time purchase and improvement costs not counted in Net Cash Flow.';
       if (ytd) {
-        html += '<div class="label">' + esc(ytd.year) + ' YTD</div><p class="sub2" style="margin:0 0 8px">' + (fmtDate(ytd.from) || ytd.from) + ' – ' + (fmtDate(ytd.to) || ytd.to) + ' · Rent collected from the rented-since date, expenses from dated Operating and Holding entries in ' + esc(ytd.year) + '.</p><div class="lines">';
+        html += '<div class="label">' + esc(ytd.year) + ' YTD' + info((fmtDate(ytd.from) || ytd.from) + ' – ' + (fmtDate(ytd.to) || ytd.to) + '. Rent collected from the rented-since date; expenses from dated Operating and Holding entries in ' + ytd.year + '.', 'ytd') + '</div><div class="lines">';
         html += ln('Months Rented', String(ytd.monthsRented), '', { lock: 'Payment months from the earliest unit rented-since date (or January 1) through today. Rent due on that day each month is counted, so 8/1–11/25 is 4 months (Aug–Nov) — locked' });
-        html += ln('Rent Collected', money(ytd.rent), '', { lock: 'Sum of each unit’s monthly rent × payment months in ' + ytd.year + ' (rent due on that unit’s rented-since day) — locked' });
-        html += unitRentLines(ytd.units);
-        html += ln('Expenses Paid', money(ytd.expenses), '', { lock: 'Operating and Holding expense entries dated in ' + ytd.year + ' — locked' });
-        html += holdingGroupLines(ytd);
+        html += breakDown(ln('Rent Collected', money(ytd.rent), '', { lock: 'Sum of each unit’s monthly rent × payment months in ' + ytd.year + ' (rent due on that unit’s rented-since day) — locked' }), unitRentLines(ytd.units));
+        html += breakDown(ln('Expenses Paid', money(ytd.expenses), '', { lock: 'Operating and Holding expense entries dated in ' + ytd.year + ' — locked' }), holdingGroupLines(ytd));
         html += ln('Net Cash Flow', sMoney(ytd.net), 'tot', { lock: 'Rent collected minus dated Operating and Holding expenses in ' + ytd.year + ' — locked' });
-        if (ytd.capital) html += ln('Improvements / Purchase Costs (Not In Net)', money(ytd.capital), '', { lock: 'Buying and Rehab entries dated in ' + ytd.year + '. Tracked for basis, not subtracted from rental cash flow — locked' });
+        if (ytd.capital) html += ln('Purchase & Improvements', money(ytd.capital), '', { lock: 'Buying and Rehab entries dated in ' + ytd.year + ' — locked', tip: capTip });
         html += '</div><div class="row" style="margin:8px 0 4px"><button type="button" class="btn sm" id="ytcsv">Export ' + esc(ytd.year) + ' YTD CSV</button></div>';
       }
       var sr = tax.sinceRented;
-      if (sr && x.hasIncome) {
-        html += '<div class="label">Since Rented</div><p class="sub2" style="margin:0 0 8px">Lifetime from the rented-since date, using monthly rent and monthly expenses (the run-rate). Dated expenses are in the YTD and tax-year figures above.</p><div class="lines">';
+      var rentStart = tax.rentStart || x.rentalStart || f.rentalStart;
+      var startYear = rentStart ? +String(rentStart).slice(0, 4) : 0;
+      // Hide when it would repeat YTD (rented-since is in the current year). Reappears once a prior year exists.
+      if (sr && x.hasIncome && startYear && startYear < +tax.currentYear) {
+        html += '<div class="label">Since Rented' + info('Lifetime from the rented-since date, using monthly rent and monthly expenses. Dated expenses are in the YTD and tax-year figures above.', 'sinceRented') + '</div><div class="lines">';
         html += ln('Months Rented', x.monthsRented == null ? '—' : String(x.monthsRented), '', { lock: 'Payment months from the earliest unit rented-since date — locked' });
-        html += ln('Rent Collected', money(x.rentToDate), '', { lock: 'Sum of each unit’s monthly rent × that unit’s payment months since it was rented — locked' });
-        html += unitRentLines(x.units);
+        html += breakDown(ln('Rent Collected', money(x.rentToDate), '', { lock: 'Sum of each unit’s monthly rent × that unit’s payment months since it was rented — locked' }), unitRentLines(x.units));
         html += ln('Cash Flow', sMoney(x.cashFlowToDate), 'tot', { lock: 'Rent collected minus monthly expenses × property months rented (from the earliest unit start) — locked' });
         html += '</div>';
       }
-      html += '<div class="label">Tax Year History</div>';
-      if (!hist.length) {
-        html += '<p class="sub2">No completed tax years yet. ' + esc(tax.currentYear) + ' will appear here after December 31, built from that year’s dated expenses and months rented, and will stay in this list.</p>';
-      } else {
+      if (hist.length) {
+        html += '<div class="label">Tax Year History</div>';
         html += hist.map(function (yr) {
           return '<details class="taxyear"><summary><span>' + esc(yr.year) + ' · ' + (fmtDate(yr.from) || yr.from) + ' – ' + (fmtDate(yr.to) || yr.to) + '</span><span class="num">' + sMoney(yr.net) + ' net</span></summary><div class="lines">' +
-            ln('Months Rented', String(yr.monthsRented)) + ln('Rent Collected', money(yr.rent)) + unitRentLines(yr.units) + ln('Expenses Paid', money(yr.expenses)) + holdingGroupLines(yr) +
+            ln('Months Rented', String(yr.monthsRented)) +
+            breakDown(ln('Rent Collected', money(yr.rent)), unitRentLines(yr.units)) +
+            breakDown(ln('Expenses Paid', money(yr.expenses)), holdingGroupLines(yr)) +
             ln('Net Cash Flow', sMoney(yr.net), 'tot') +
-            (yr.capital ? ln('Improvements / Purchase Costs (Not In Net)', money(yr.capital)) : '') +
+            (yr.capital ? ln('Purchase & Improvements', money(yr.capital), '', { tip: capTip }) : '') +
             '</div><div class="row" style="margin:8px 0 4px"><button type="button" class="btn sm" data-taxcsv="' + esc(yr.year) + '">Export ' + esc(yr.year) + ' CSV</button></div></details>';
         }).join('');
       }
@@ -1447,7 +1460,7 @@
     var x = C.holding(f), can = f.canManage;
     var ln = function (k, v, cls, opts) {
       opts = opts || {};
-      var icon = opts.close ? closeInfo(opts.close, k) : (opts.lock ? lock(opts.lock) + info('', 'ln:' + plain(k)) : info('', 'ln:' + plain(k)));
+      var icon = opts.close ? closeInfo(opts.close, k) : ((opts.lock ? lock(opts.lock) : '') + info(opts.tip || '', 'ln:' + plain(k)));
       return '<div class="ln' + (cls ? ' ' + cls : '') + '"><span>' + k + icon + '</span><span class="num">' + v + '</span></div>';
     };
     var html = '<p class="meta"><a href="#/holdings">← Holdings</a></p><div class="spread"><div><h1>' + esc(f.address) + '</h1><p class="lead">' + esc(f.city) + info(f.partners || '', 'h:Partners') + '</p></div><div class="row">' +
@@ -1456,8 +1469,8 @@
     if (TIPS && TIPS.edit && can) html += '<div id="edpanel" class="card rule" style="margin-top:18px"></div>';
     html += '<div class="grid g4" style="margin-top:4px">' +
       kpi('Equity', sMoney(x.equity, 0), (x.value ? money(x.value, 0) + ' value' : 'Needs value') + ' − ' + money(x.loanBalance, 0) + ' loan', x.equity < 0 ? 'bad' : 'good') +
-      kpi('Monthly Cash Flow', x.hasIncome ? sMoney(x.monthlyCashFlow, 0) : '<span class="pill warn">Needs Data</span>', x.hasIncome ? money(x.noi, 0) + ' annual NOI' : (x.rent ? money(x.rent, 0) + ' rent; add monthly expenses' : 'Add rent and monthly expenses')) +
-      kpi('Cash-On-Cash', x.hasIncome ? sPct(x.cashOnCash) : '—', 'Annual cash flow ÷ cash in') +
+      kpi('Monthly Cash Flow', x.hasIncome ? sMoney(x.monthlyCashFlow, 0) : '<span class="pill warn">Needs Data</span>', x.hasIncome ? '' : (x.rent ? 'Add monthly expenses' : 'Add rent and monthly expenses')) +
+      kpi('Cash-On-Cash', x.hasIncome ? sPct(x.cashOnCash) : '—', '') +
       kpi('Total Return', sPct(x.totalRoi), 'Equity gain plus a year of cash flow') + '</div>';
     html += '<div class="grid g2" style="margin-top:22px"><div class="card rule"><h2>The Numbers' + info(f.notes || '', 'h:Notes') + '</h2><div class="lines">' +
       ln('Purchase Price', money(f.purchasePrice)) + ln('Closing Costs', money(f.buyClosingCosts), '', { close: 'Buying' }) + ln('Improvements Spent', money(f.rehabSpent), '', { lock: 'Total of this property’s improvement expense entries — locked' }) + ln('All-In Cost', money(x.allIn), 'tot', { lock: 'Purchase price + closing costs + improvements and other costs — locked' }) +
@@ -1465,18 +1478,18 @@
       ln('Current Value', x.value ? money(x.value) : '<span class="pill warn">Needs Value</span>') + ln('Equity', sMoney(x.equity), 'tot', { lock: 'Current value minus loan balance — locked' }) + '</div></div>' +
       '<div class="card rule"><h2>Return</h2><div style="display:flex;justify-content:center;gap:18px;margin-top:10px">' +
       donut(x.equityRoi || 0, 1, pct(x.equityRoi, 0), 'Equity Gain', x.equityRoi == null ? 'gold' : (x.equityRoi >= 0 ? 'good' : 'bad')) + donut(x.cashOnCash || 0, 0.2, x.hasIncome ? pct(x.cashOnCash, 1) : '—', 'Cash-On-Cash', 'gold') + '</div>' +
-      '<hr class="sep"><div class="mini"><div>Purchased' + info(f.datesNote || '', 'h:Dates') + '<b>' + (fmtDate(f.purchaseDate) || '<span class="pill warn">Needs Date</span>') + '</b></div><div>Rented Since' + lock('Earliest unit rented-since date — locked') + '<b>' + (fmtDate(x.rentalStart || f.rentalStart) || fmtDate(f.purchaseDate) || '—') + '</b></div><div>Months Held' + lock('Calculated from the purchase date — locked') + '<b>' + (x.monthsHeld == null ? '—' : x.monthsHeld) + '</b></div><div>Months Rented' + lock('Payment months from the earliest unit rented-since date. Rent due on that day each month is counted — locked') + '<b>' + (x.monthsRented == null ? '—' : x.monthsRented) + '</b></div><div>Value Vs All-In' + lock('Current value minus all-in cost — locked') + '<b>' + sMoney(x.value ? x.value - x.allIn : 0, 0) + '</b></div></div></div></div>';
+      '<hr class="sep"><div class="mini"><div>Purchased' + info(f.datesNote || '', 'h:Dates') + '<b>' + (fmtDate(f.purchaseDate) || '<span class="pill warn">Needs Date</span>') + '</b></div><div>Rented Since' + lock('Earliest unit rented-since date — locked') + '<b>' + (fmtDate(x.rentalStart || f.rentalStart) || fmtDate(f.purchaseDate) || '—') + '</b></div><div>Months Held' + lock('Calculated from the purchase date — locked') + '<b>' + (x.monthsHeld == null ? '—' : x.monthsHeld) + '</b></div><div>Value Vs All-In' + lock('Current value minus all-in cost — locked') + '<b>' + sMoney(x.value ? x.value - x.allIn : 0, 0) + '</b></div></div></div></div>';
+    var unitRentRows = (x.units && x.units.length) ? x.units.map(function (u) { return '<div class="ln sub"><span class="lnl">' + esc(u.name || 'Unit') + (u.rentalStart ? ' · since ' + (fmtDate(u.rentalStart) || u.rentalStart) : '') + '</span><span class="num">' + money(u.rent) + '</span></div>'; }).join('') : '';
     html += '<div class="card rule rentcard" style="margin-top:16px"><h2>Rent And Cash Flow</h2><div class="lines">' +
-      ln('Monthly Rent', x.rent ? money(x.rent) : '<span class="pill warn">Needs Data</span>', '', { lock: (x.units && x.units.length) ? 'Sum of unit rents — locked' : 'Monthly rent — locked' }) +
-      (x.units && x.units.length ? x.units.map(function (u) { return '<div class="ln sub"><span class="lnl">' + esc(u.name || 'Unit') + (u.rentalStart ? ' · since ' + (fmtDate(u.rentalStart) || u.rentalStart) : '') + '</span><span class="num">' + money(u.rent) + '</span></div>'; }).join('') : '') +
-      ln('Monthly Expenses', x.expenses ? money(x.expenses) : '<span class="pill warn">Needs Data</span>') + ln('Monthly Cash Flow', x.hasIncome ? sMoney(x.monthlyCashFlow) : '<span class="pill warn">Needs Data</span>', 'tot', { lock: 'Rent minus monthly expenses — locked' }) + (x.hasIncome ? ln('Annual NOI (No Mortgage)', sMoney(x.noi), 'tot', { lock: 'Monthly cash flow × 12 — locked' }) : '') +
-      ln('Rented Since', fmtDate(x.rentalStart || f.rentalStart || f.purchaseDate) || '<span class="pill warn">Needs Date</span>', '', { lock: 'Earliest unit rented-since date — locked' }) + '</div>' +
+      breakDown(ln('Monthly Rent', x.rent ? money(x.rent) : '<span class="pill warn">Needs Data</span>', '', { lock: (x.units && x.units.length) ? 'Sum of unit rents — locked' : 'Monthly rent — locked' }), unitRentRows) +
+      ln('Monthly Expenses', x.expenses ? money(x.expenses) : '<span class="pill warn">Needs Data</span>') + ln('Monthly Cash Flow', x.hasIncome ? sMoney(x.monthlyCashFlow) : '<span class="pill warn">Needs Data</span>', 'tot', { lock: 'Rent minus monthly expenses — locked' }) + (x.hasIncome ? ln('Annual NOI', sMoney(x.noi), 'tot', { lock: 'Monthly cash flow × 12 — locked' }) : '') +
+      '</div>' +
       '<div id="renttax" class="renttax"><p class="meta">Loading year-to-date…</p></div>' +
-      (depositsHeld(f) ? '<div class="lines">' + ln('Security Deposits Held (Owed To Tenants)', money(depositsHeld(f)), '', { lock: 'A liability owed back to tenants, not rental income — locked' }) + '</div>' : '') + '</div>';
+      (depositsHeld(f) ? '<div class="lines">' + ln('Security Deposits', money(depositsHeld(f))) + '</div>' : '') + '</div>';
     if (isOwner()) html += '<div class="label">Expenses</div><div id="proex"></div>';
     html += '<div class="label">Inventory Needs List</div><div id="invlist"></div>';
-    html += '<div class="label">Documents</div><div id="tdocs"></div>';
-      html += '<div class="label">Internal Notes</div><div id="tnotes"></div>';
+    html += '<div class="label">Documents' + info('PDF, JPG or PNG, under 10 MB. Click the name to open.', 'h:Documents') + '</div><div id="tdocs"></div>';
+    html += '<div class="label">Internal Notes' + info('Internal only. Not included in PDF reports.', 'h:InternalNotes') + '</div><div id="tnotes"></div>';
     if (f.estimates && f.estimates.length) html += '<div class="label">Estimates Tied To This Holding</div>' + estTable(f.estimates);
     $app.innerHTML = html; animate();
     renderInventory('flip', f.id, f.inventory || [], can); propExpenses(f); renderDocuments(f); renderTNotes(f); fillRentTax(f, x, ln);
@@ -1775,6 +1788,11 @@
     document.addEventListener('mouseover', function (e) { var b = e.target.closest && e.target.closest('.info'); if (b && matchMedia('(hover:hover)').matches) show(b); });
     document.addEventListener('mouseout', function (e) { var b = e.target.closest && e.target.closest('.info'); if (!b || !matchMedia('(hover:hover)').matches) return; if (tip.querySelector('.tipedit')) return; hide(); });
     tip.addEventListener('mouseleave', function () { if (matchMedia('(hover:hover)').matches) hide(); });
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape' || tip.hidden) return;
+      var md = document.getElementById('modal'); if (md && !md.hidden) return;
+      e.preventDefault(); hide();
+    });
     window.addEventListener('scroll', hide, { passive: true }); window.addEventListener('hashchange', hide);
   })();
 

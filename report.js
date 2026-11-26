@@ -151,7 +151,7 @@
     R.hero(sold ? (x.profit < 0 ? 'Loss' : 'Profit') : (x.profit < 0 ? 'Projected Loss' : 'Projected Profit'), money(x.profit, 0), (sold ? 'Sold for ' : 'At a ') + money(f.salePrice, 0) + (sold ? '' : ' sale'), x.profit < 0);
     R.kpis([['Return On Cash', pct(x.roiCash), x.roiCash < 0 ? 'bad' : ''], ['Return On Total Cost', pct(x.roiCost), x.roiCost < 0 ? 'bad' : ''], ['Cash Invested', money(f.cashInvested, 0)], [sold ? 'Annualized (Simple)' : 'Days Held So Far', sold ? pct(x.simpleAnnual) : String(x.daysHeld || '-')]]);
     R.section('The Numbers');
-    var rows = [['Purchase Price', money(f.purchasePrice)], ['Loan' + (f.lender ? ' · ' + f.lender : ''), money(f.loanAmount)], ['Buying Closing Costs', money(f.buyClosingCosts)], ['Rehab Spent (Budget ' + money(f.rehabBudget, 0) + ')', money(f.rehabSpent)], ['Holding Costs (Interest, Taxes, Insurance)', money(f.holdingCosts)], ['Selling Costs', money(f.sellingCosts)]];
+    var rows = [['Purchase Price', money(f.purchasePrice)], ['Loan' + (f.lender ? ' · ' + f.lender : ''), money(f.loanAmount)], ['Buying Closing Costs', money(f.buyClosingCosts)], ['Rehab Spent (Budget ' + money(f.rehabBudget, 0) + ')', money(f.rehabSpent)], ['Holding Costs', money(f.holdingCosts)], ['Selling Costs', money(f.sellingCosts)]];
     if (n(f.otherCosts)) rows.push([f.otherCostsLabel || 'Other Costs', money(f.otherCosts)]);
     if (n(f.adjustments)) rows.push([f.adjustmentsLabel || 'Credits', '-' + money(f.adjustments)]);
     if (n(f.purchaseCredits)) rows.push(['Purchase Credits', '-' + money(f.purchaseCredits)]);
@@ -175,7 +175,7 @@
       ['Current Value', x.value ? money(x.value) : 'Needs value'], ['Equity', money(x.equity), true], ['Monthly Rent', x.rent ? money(x.rent) : 'Needs data']];
     (x.units || []).forEach(function (u) { rows.push(['  ' + (u.name || 'Unit') + (u.rentalStart ? ' · since ' + (fdate(u.rentalStart) || u.rentalStart) : ''), money(u.rent)]); });
     rows.push(['Monthly Expenses', x.expenses ? money(x.expenses) : 'Needs data'], ['Monthly Cash Flow', x.hasIncome ? money(x.monthlyCashFlow) : 'Needs data', true]);
-    if (x.hasIncome) rows.push(['Annual NOI (No Mortgage)', money(x.noi), true]);
+    if (x.hasIncome) rows.push(['Annual NOI', money(x.noi), true]);
     rows.push(['Rented Since', fdate((x.rentalStart || f.rentalStart) || f.purchaseDate) || 'Needs date']);
     R.lines(rows);
     var ty = d.taxYears, ytd = ty && ty.ytd, hist = ty && ty.history || [];
@@ -192,15 +192,17 @@
         Object.keys(ytd.nonRecurringByCategory || {}).sort().forEach(function (k) { yrows.push(['    ' + k, money(ytd.nonRecurringByCategory[k])]); });
       }
       yrows.push(['Net Cash Flow', money(ytd.net), true]);
-      if (ytd.capital) yrows.push(['Improvements / Purchase Costs (Not In Net)', money(ytd.capital)]);
+      if (ytd.capital) yrows.push(['Purchase & Improvements', money(ytd.capital)]);
       R.section(ytd.year + ' YTD');
       R.lines(yrows);
     }
-    if (x.hasIncome) {
+    var rentStart = (ty && ty.rentStart) || x.rentalStart || f.rentalStart;
+    var curY = (ty && ty.currentYear) || '';
+    if (x.hasIncome && rentStart && curY && +String(rentStart).slice(0, 4) < +curY) {
       R.section('Since Rented');
       var srows = [['Months Rented', x.monthsRented == null ? '-' : String(x.monthsRented)], ['Rent Collected', money(x.rentToDate)]];
       (x.units || []).forEach(function (u) { srows.push(['  ' + (u.name || 'Unit') + (u.monthsRented != null ? ' · ' + u.monthsRented + ' mo' : ''), money(u.rentToDate)]); });
-      srows.push(['Cash Flow (rent collected minus monthly expenses × months)', money(x.cashFlowToDate), true]);
+      srows.push(['Cash Flow', money(x.cashFlowToDate), true]);
       R.lines(srows);
     }
     hist.forEach(function (yr) {
@@ -216,11 +218,11 @@
         Object.keys(yr.nonRecurringByCategory || {}).sort().forEach(function (k) { hrows.push(['    ' + k, money(yr.nonRecurringByCategory[k])]); });
       }
       hrows.push(['Net Cash Flow', money(yr.net), true]);
-      if (yr.capital) hrows.push(['Improvements / Purchase Costs (Not In Net)', money(yr.capital)]);
+      if (yr.capital) hrows.push(['Purchase & Improvements', money(yr.capital)]);
       R.section('Tax Year ' + yr.year);
       R.lines(hrows);
     });
-    R.note('Purchased ' + (fdate(f.purchaseDate) || '(needs date)') + (f.rentalStart ? ' · Rented since ' + fdate(f.rentalStart) : '') + (x.monthsHeld != null ? ' · ' + x.monthsHeld + ' months held' : '') + (x.monthsRented != null ? ' · ' + x.monthsRented + ' months rented' : '') + (x.hasIncome && x.rentToDate ? ' · Rent collected since rented ' + money(x.rentToDate) : '') + '. YTD and tax-year expenses are dated Operating and Holding entries. Security deposits are a liability, not income.');
+    R.note('Purchased ' + (fdate(f.purchaseDate) || '(needs date)') + (f.rentalStart ? ' · Rented since ' + fdate(f.rentalStart) : '') + (x.monthsHeld != null ? ' · ' + x.monthsHeld + ' months held' : '') + (x.monthsRented != null ? ' · ' + x.monthsRented + ' months rented' : '') + (x.hasIncome && x.rentToDate ? ' · Rent collected since rented ' + money(x.rentToDate) : '') + '.');
     expensesSection(R, d.expenses);
 
     return R.finish();
