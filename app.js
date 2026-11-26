@@ -369,13 +369,13 @@
       var hx = list.map(function (f) { return { f: f, x: C.holding(f) }; });
       var hs = function (k) { return hx.reduce(function (t, r) { return t + (r.x[k] || 0); }, 0); };
       var known = hx.filter(function (r) { return r.x.hasIncome; }), cashKnown = known.reduce(function (t, r) { return t + (r.x.cashInvested || 0); }, 0);
-      var noi = known.reduce(function (t, r) { return t + r.x.noi; }, 0), coc = cashKnown ? noi / cashKnown : null;
+      var noi = known.reduce(function (t, r) { return t + r.x.noi; }, 0), yearCf = known.reduce(function (t, r) { return t + r.x.annualCashFlow; }, 0), coc = cashKnown ? yearCf / cashKnown : null;
       var cash = hs('cashInvested'), eq = hs('equity'), eqGain = cash ? (eq - cash) / cash : null;
       var deps = list.reduce(function (t, f) { return t + depositsHeld(f); }, 0);
       var html = '<div class="spread"><div><h1>Holdings Dashboard</h1><p class="lead">' + list.length + ' propert' + (list.length === 1 ? 'y' : 'ies') + ' held · rent, cash flow and equity</p></div>' +
         '<div class="row" style="margin-bottom:18px"><a class="btn" href="#/holdings">All Holdings</a></div></div>';
       html += '<div class="grid g4">' +
-        kpi('Monthly Cash Flow', known.length ? sMoney(hs('monthlyCashFlow'), 0) : '<span class="pill warn">Needs Data</span>', money(hs('rent'), 0) + ' rent − ' + money(hs('expenses'), 0) + ' expenses', 'good') +
+        kpi('Monthly Cash Flow', known.length ? sMoney(hs('monthlyCashFlow'), 0) : '<span class="pill warn">Needs Data</span>', money(hs('rent'), 0) + ' rent − ' + money(hs('expenses'), 0) + ' expenses' + (hs('monthlyPayment') ? ' − ' + money(hs('monthlyPayment'), 0) + ' payment' : ''), 'good') +
         kpi('Annual NOI', known.length ? sMoney(noi, 0) : '—', '', 'good') +
         kpi('Cash-On-Cash', sPct(coc), '', null, { v: coc, max: 1, tone: coc < 0 ? 'bad' : 'good', label: pct(coc, 0) }) +
         kpi('Equity', sMoney(eq, 0), pct(eqGain, 0) + ' gain on cash in', eq < 0 ? 'bad' : 'good', { v: eqGain, max: 1, tone: eqGain < 0 ? 'bad' : 'good', label: pct(eqGain, 0) }) + '</div>';
@@ -920,7 +920,10 @@
       var nums = C.numbersDisplayOf(f, x);
       html += '<div class="grid g2" style="margin-top:22px"><div class="card rule"><h2>The Numbers' + info(f.notes || '', 'h:Notes') + '</h2><div class="lines">' +
         ln('Purchase Price', money(f.purchasePrice)) + ln('Loan' + (f.lender ? ' · ' + esc(f.lender) : ''), money(nums.loan)) + (f.interestRate ? ln('Interest Rate', (Number(f.interestRate) || 0).toFixed(3).replace(/\.?0+$/, '') + '%') : '') +
+        (!sold && x.loanPayMode === 'monthly' && C.n(f.monthlyPayment) > 0 ? ln('Monthly Payment', money(f.monthlyPayment)) : '') +
+        (!sold && (x.loanPayMode === 'monthly' || x.loanPayMode === 'closing') && f.estimatedSaleDate ? ln('Estimated Sell Date', C.fmtDate(f.estimatedSaleDate) || f.estimatedSaleDate) : '') +
         ln('Buying Closing Costs', money(f.buyClosingCosts), '', { close: 'Buying' }) + ln('Rehab Spent', money(f.rehabSpent), '', { lock: 'Total of this property’s Rehab expense entries — locked' }) + ln('Holding Costs', money(f.holdingCosts), '', { lock: 'Total of this property’s Holding expense entries — locked' }) +
+        (x.estLoanPayments ? ln(x.estLoanLabel || (x.loanPayMode === 'closing' ? 'Loan Interest' : 'Est. Loan Payments'), money(x.estLoanPayments), '', { lock: 'From the loan payment option and the estimated sell date — locked' }) : '') +
         ln('Selling Costs', money(f.sellingCosts), '', { close: 'Selling' }) + (f.otherCosts ? ln(esc(f.otherCostsLabel || 'Other Costs'), money(f.otherCosts), '', { lock: 'Total of After-Sale expense entries — locked' }) : '') +
         (nums.adjustments ? ln(esc(nums.adjustmentsLabel || 'Credits'), '<span class="pos">' + money(nums.adjustments) + '</span>') : '') +
         (nums.purchaseCredits ? ln('Purchase Credits', '<span class="pos">' + money(nums.purchaseCredits) + '</span>', '', { tip: 'Purchase-side credits (for example escrow credits at purchase). They reduce total cost and cash in. They are not added to sale Net Proceeds.' }) : '') +
@@ -1150,7 +1153,7 @@
   }
 
   var FLIP_FIELDS = [['address', 'Property Address', 'text'], ['city', 'City, State Zip', 'text'], ['purchaseDate', 'Purchase Close Date', 'date'], ['saleDate', 'Sale Close Date', 'date'],
-    ['purchasePrice', 'Purchase Price', 'num'], ['loanAmount', 'Loan Amount', 'num'], ['lender', 'Lender', 'text'], ['interestRate', 'Interest Rate (% / year)', 'num'], ['buyClosingCosts', 'Buying Closing Costs', 'num'],
+    ['purchasePrice', 'Purchase Price', 'num'], ['loanAmount', 'Loan Amount', 'num'], ['lender', 'Lender', 'text'], ['interestRate', 'Interest Rate (% / year)', 'num'], ['loanPayMode', 'Payment', 'paymode'], ['monthlyPayment', 'Monthly Payment', 'num'], ['closingInterest', 'Amount', 'num'], ['estimatedSaleDate', 'Estimated Sell Date', 'date'], ['buyClosingCosts', 'Buying Closing Costs', 'num'],
     ['rehabBudget', 'Rehab Budget', 'num'], ['rehabSpent', 'Rehab Spent', 'num'], ['holdingCosts', 'Holding Costs', 'num'], ['sellingCosts', 'Selling Costs', 'num'],
     ['adjustments', 'Credits', 'num'], ['adjustmentsLabel', 'Credits Label', 'text'],
     ['purchaseCredits', 'Purchase Credits', 'num'],
@@ -1158,7 +1161,7 @@
   var HOLD_FIELDS = [['address', 'Property Address', 'text'], ['city', 'City, State Zip', 'text'], ['purchaseDate', 'Purchase Close Date', 'date'], ['rentalStart', 'Rented Since', 'date'], ['saleDate', 'Sale Close Date', 'date'],
     ['purchasePrice', 'Purchase Price', 'num'], ['buyClosingCosts', 'Closing Costs', 'num'], ['loanAmount', 'Original Loan', 'num'], ['lender', 'Lender', 'text'], ['interestRate', 'Interest Rate (% / year)', 'num'], ['loanBalance', 'Current Loan Balance', 'num'],
     ['rehabBudget', 'Improvements Budget', 'num'], ['rehabSpent', 'Improvements Spent', 'num'], ['currentValue', 'Current Value', 'num'],
-    ['monthlyIncome', 'Monthly Income', 'num'], ['monthlyExpenses', 'Monthly Expenses', 'num'], ['salePrice', 'Sale Price', 'num'], ['datesNote', 'Date Notes', 'text'], ['notes', 'Property Notes', 'area']];
+    ['monthlyIncome', 'Monthly Income', 'num'], ['monthlyExpenses', 'Monthly Expenses', 'num'], ['monthlyPayment', 'Monthly Payment', 'num'], ['salePrice', 'Sale Price', 'num'], ['datesNote', 'Date Notes', 'text'], ['notes', 'Property Notes', 'area']];
   // Cost-bucket totals come from expense entries (or from (i) line items for closing costs) and are locked on existing deals.
   // On a brand-new property, a typed starting total is saved as one unitemized expense line — existing deals are never rewritten that way.
   var DERIVED = { buyClosingCosts: 'Buying', rehabSpent: 'Rehab', holdingCosts: 'Holding', sellingCosts: 'Selling', otherCosts: 'After Sale' };
@@ -1409,9 +1412,15 @@
       if (typ === 'num' && v !== '' && v != null) v = (k === 'interestRate') ? String(v) : m2(v);
       var closeK = (!isNew && led && k === 'buyClosingCosts') ? 'Buying' : (!isNew && led && k === 'sellingCosts') ? 'Selling' : '';
       var lab = x[1] + (closeK ? closeInfo(closeK, x[1]) : (der ? lock('Total of this property’s expense entries — locked. Edit them via the (i) on Buying/Selling Closing Costs, or in Expenses.') + info(led ? 'Locked total of this property’s expense entries. Use (i) on the Numbers card for closing-cost line items, or Expenses for rehab, holding and other costs.' : 'On a new property, a typed total is saved as one unitemized expense line you can break out later.') : (unitLocked ? lock(k === 'monthlyIncome' ? 'Sum of unit rents — locked' : 'Earliest unit rented-since date — locked') : '')));
+      var loanK = (k === 'loanPayMode' || k === 'monthlyPayment' || k === 'closingInterest' || k === 'estimatedSaleDate');
+      var box = loanK ? 'field" data-loan-field="' + k : 'field';
       if (typ === 'area') return '<div class="field" style="grid-column:1/-1"><label>' + lab + '</label><textarea data-k="' + k + '" rows="2">' + esc(v == null ? '' : v) + '</textarea></div>';
-      return '<div class="field"><label>' + lab + '</label><input data-k="' + k + '" type="' + (typ === 'date' ? 'date' : 'text') + '" ' + (typ === 'num' ? 'inputmode="decimal"' : '') + (ro ? ' readonly tabindex="-1" class="ro"' : '') + ' value="' + esc(v == null ? '' : v) + '"></div>';
-    }).join('') + (led ? '<div class="field"><label>Cash Invested' + lock('Each partner’s purchase cash plus the expenses they paid, live from the expense entries — locked') + info('Each partner’s purchase cash plus the expenses they paid, live from the expense entries') + '</label><input class="ro" readonly tabindex="-1" value="' + esc(m2(cashIn)) + '"></div>' : '') + '</div>' +
+      if (typ === 'paymode') {
+        var mode = String(v || '');
+        return '<div class="' + box + '"><label>' + lab + '</label><select data-k="loanPayMode"><option value=""' + (mode ? '' : ' selected') + '></option><option value="monthly"' + (mode === 'monthly' ? ' selected' : '') + '>Monthly</option><option value="closing"' + (mode === 'closing' ? ' selected' : '') + '>At Closing</option></select></div>';
+      }
+      return '<div class="' + box + '"><label>' + lab + '</label><input data-k="' + k + '" type="' + (typ === 'date' ? 'date' : 'text') + '" ' + (typ === 'num' ? 'inputmode="decimal"' : '') + (ro ? ' readonly tabindex="-1" class="ro"' : '') + ' value="' + esc(v == null ? '' : v) + '"></div>';
+    }).join('') + (!hold ? '<div class="field" data-loan-field="est"><label><span id="ed-estloan-lab">Est. Loan Payments</span>' + lock('From the payment, rate, or amount and the estimated sell date — locked') + '</label><input id="ed-estloan" class="ro" readonly tabindex="-1" value=""></div>' : '') + (led ? '<div class="field"><label>Cash Invested' + lock('Each partner’s purchase cash plus the expenses they paid, live from the expense entries — locked') + info('Each partner’s purchase cash plus the expenses they paid, live from the expense entries') + '</label><input class="ro" readonly tabindex="-1" value="' + esc(m2(cashIn)) + '"></div>' : '') + '</div>' +
       (hold ? '<div class="field" style="grid-column:1/-1"><label>Units</label>' + unitsHtml() + '</div>' : '') +
       (isNew ? '<div class="field"><label>Status</label><select id="ed-status">' + SL.map(function (st) { return '<option' + (st === (hold ? 'Owned' : 'Active') ? ' selected' : '') + '>' + st + '</option>'; }).join('') + '</select></div>' : '') +
       '<div class="field"><label>Partners</label>' + partnersHtml(rows) + '</div>' +
@@ -1420,6 +1429,36 @@
     var bind = function (root) {
       var P = bindPartners(root.querySelector('.prt'), rows, g.ledger);
       var U = hold ? bindUnits(root.querySelector('#ed-units') || root, C.unitsOf ? C.unitsOf(f) : (f.units || [])) : null;
+      var syncLoanPay = function () {
+        var aEl = root.querySelector('[data-k="loanAmount"]'), bEl = root.querySelector('[data-k="loanBalance"]');
+        var on = C.n(aEl ? aEl.value : f.loanAmount) > 0 || C.n(bEl ? bEl.value : f.loanBalance) > 0;
+        var modeEl = root.querySelector('[data-k="loanPayMode"]');
+        var mode = modeEl ? modeEl.value : (hold ? 'monthly' : '');
+        var sold = f.status === 'Sold';
+        root.querySelectorAll('[data-loan-field]').forEach(function (el) {
+          var k = el.getAttribute('data-loan-field'), show = on;
+          if (hold) show = on && k === 'monthlyPayment';
+          else if (k === 'monthlyPayment') show = on && mode === 'monthly' && !sold;
+          else if (k === 'closingInterest') show = on && mode === 'closing' && !sold;
+          else if (k === 'estimatedSaleDate' || k === 'est') show = on && (mode === 'monthly' || mode === 'closing') && !sold;
+          else if (k === 'loanPayMode') show = on && !sold;
+          el.style.display = show ? '' : 'none';
+        });
+        var estEl = root.querySelector('#ed-estloan'), labEl = root.querySelector('#ed-estloan-lab');
+        if (labEl) labEl.textContent = mode === 'closing' ? 'Loan Interest' : 'Est. Loan Payments';
+        if (estEl && C.estimatedLoanCostOf) {
+          var draft = {};
+          Object.keys(f).forEach(function (k) { draft[k] = f[k]; });
+          root.querySelectorAll('[data-k]').forEach(function (el) { draft[el.dataset.k] = el.value; });
+          var est = C.estimatedLoanCostOf(draft, todayISO());
+          estEl.value = est ? m2(est) : '';
+        }
+      };
+      ['loanAmount', 'loanBalance', 'loanPayMode', 'monthlyPayment', 'closingInterest', 'estimatedSaleDate', 'interestRate', 'purchaseDate'].forEach(function (k) {
+        var el = root.querySelector('[data-k="' + k + '"]');
+        if (el) { el.addEventListener('input', syncLoanPay); el.addEventListener('change', syncLoanPay); }
+      });
+      syncLoanPay();
       var cx = root.querySelector('#ed-cancel');
       if (cx) cx.onclick = function () { if (host) exitEditMode(f); else closeModal(); };
       var rm = root.querySelector('#ed-rmprop');
@@ -1845,7 +1884,7 @@
         html += '<div class="label">Since Rented' + info('Lifetime from the rented-since date, using monthly rent and monthly expenses. Dated expenses are in the YTD and tax-year figures above.', 'sinceRented') + '</div><div class="lines">';
         html += ln('Months Rented', x.monthsRented == null ? '—' : String(x.monthsRented), '', { lock: 'Payment months from the earliest unit rented-since date — locked' });
         html += breakDown(ln('Rent Collected', money(x.rentToDate), '', { lock: 'Sum of each unit’s monthly rent × that unit’s payment months since it was rented — locked' }), unitRentLines(x.units));
-        html += ln('Cash Flow', sMoney(x.cashFlowToDate), 'tot', { lock: 'Rent collected minus monthly expenses × property months rented (from the earliest unit start) — locked' });
+        html += ln('Cash Flow', sMoney(x.cashFlowToDate), 'tot', { lock: x.monthlyPayment ? 'Rent collected minus monthly expenses and the monthly payment × property months rented (from the earliest unit start) — locked' : 'Rent collected minus monthly expenses × property months rented (from the earliest unit start) — locked' });
         html += '</div>';
       }
       if (hist.length) {
@@ -1909,7 +1948,7 @@
     var unitRentRows = (x.units && x.units.length) ? x.units.map(function (u) { return '<div class="ln sub"><span class="lnl">' + esc(u.name || 'Unit') + (u.rentalStart ? ' · since ' + (fmtDate(u.rentalStart) || u.rentalStart) : '') + '</span><span class="num">' + money(u.rent) + '</span></div>'; }).join('') : '';
     html += '<div class="card rule rentcard" style="margin-top:16px"><h2>Rent And Cash Flow</h2><div class="lines">' +
       breakDown(ln('Monthly Rent', x.rent ? money(x.rent) : '<span class="pill warn">Needs Data</span>', '', { lock: (x.units && x.units.length) ? 'Sum of unit rents — locked' : 'Monthly rent — locked' }), unitRentRows) +
-      ln('Monthly Expenses', x.expenses ? money(x.expenses) : '<span class="pill warn">Needs Data</span>') + ln('Monthly Cash Flow', x.hasIncome ? sMoney(x.monthlyCashFlow) : '<span class="pill warn">Needs Data</span>', 'tot', { lock: 'Rent minus monthly expenses — locked' }) + (x.hasIncome ? ln('Annual NOI', sMoney(x.noi), 'tot', { lock: 'Monthly cash flow × 12 — locked' }) : '') +
+      ln('Monthly Expenses', x.expenses ? money(x.expenses) : '<span class="pill warn">Needs Data</span>') + (x.monthlyPayment ? ln('Monthly Payment', money(x.monthlyPayment)) : '') + ln('Monthly Cash Flow', x.hasIncome ? sMoney(x.monthlyCashFlow) : '<span class="pill warn">Needs Data</span>', 'tot', { lock: x.monthlyPayment ? 'Rent minus monthly expenses and the monthly payment — locked' : 'Rent minus monthly expenses — locked' }) + (x.hasIncome ? ln('Annual NOI', sMoney(x.noi), 'tot', { lock: 'Rent minus monthly expenses, × 12 — locked' }) : '') +
       '</div>' +
       '<div id="renttax" class="renttax"><p class="meta">Loading year-to-date…</p></div>' +
       (depositsHeld(f) ? '<div class="lines">' + ln('Security Deposits', money(depositsHeld(f))) + '</div>' : '') + '</div>';

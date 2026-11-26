@@ -152,7 +152,9 @@
     R.kpis([['Return On Cash', pct(x.roiCash), x.roiCash < 0 ? 'bad' : ''], ['Return On Total Cost', pct(x.roiCost), x.roiCost < 0 ? 'bad' : ''], ['Cash Invested', money(f.cashInvested, 0)], [sold ? 'Annualized (Simple)' : 'Days Held So Far', sold ? pct(x.simpleAnnual) : String(x.daysHeld || '-')]]);
     R.section('The Numbers');
     var nums = C.numbersDisplayOf(f, x);
-    var rows = [['Purchase Price', money(f.purchasePrice)], ['Loan' + (f.lender ? ' · ' + f.lender : ''), money(nums.loan)], ['Buying Closing Costs', money(f.buyClosingCosts)], ['Rehab Spent (Budget ' + money(f.rehabBudget, 0) + ')', money(f.rehabSpent)], ['Holding Costs', money(f.holdingCosts)], ['Selling Costs', money(f.sellingCosts)]];
+    var rows = [['Purchase Price', money(f.purchasePrice)], ['Loan' + (f.lender ? ' · ' + f.lender : ''), money(nums.loan)], ['Buying Closing Costs', money(f.buyClosingCosts)], ['Rehab Spent (Budget ' + money(f.rehabBudget, 0) + ')', money(f.rehabSpent)], ['Holding Costs', money(f.holdingCosts)]];
+    if (x.estLoanPayments) rows.push([x.estLoanLabel || (x.loanPayMode === 'closing' ? 'Loan Interest' : 'Est. Loan Payments'), money(x.estLoanPayments)]);
+    rows.push(['Selling Costs', money(f.sellingCosts)]);
     if (n(f.otherCosts)) rows.push([f.otherCostsLabel || 'Other Costs', money(f.otherCosts)]);
     if (n(nums.adjustments)) rows.push([nums.adjustmentsLabel || 'Credits', '-' + money(nums.adjustments)]);
     if (n(nums.purchaseCredits)) rows.push(['Purchase Credits', '-' + money(nums.purchaseCredits)]);
@@ -179,7 +181,9 @@
       ['Original Loan' + (f.lender ? ' · ' + f.lender : ''), money(f.loanAmount)], ['Current Loan Balance', money(x.loanBalance)], ['Cash Invested', money(x.cashInvested), true],
       ['Current Value', x.value ? money(x.value) : 'Needs value'], ['Equity', money(x.equity), true], ['Monthly Rent', x.rent ? money(x.rent) : 'Needs data']);
     (x.units || []).forEach(function (u) { rows.push(['  ' + (u.name || 'Unit') + (u.rentalStart ? ' · since ' + (fdate(u.rentalStart) || u.rentalStart) : ''), money(u.rent)]); });
-    rows.push(['Monthly Expenses', x.expenses ? money(x.expenses) : 'Needs data'], ['Monthly Cash Flow', x.hasIncome ? money(x.monthlyCashFlow) : 'Needs data', true]);
+    rows.push(['Monthly Expenses', x.expenses ? money(x.expenses) : 'Needs data']);
+    if (x.monthlyPayment) rows.push(['Monthly Payment', money(x.monthlyPayment)]);
+    rows.push(['Monthly Cash Flow', x.hasIncome ? money(x.monthlyCashFlow) : 'Needs data', true]);
     if (x.hasIncome) rows.push(['Annual NOI', money(x.noi), true]);
     rows.push(['Rented Since', fdate((x.rentalStart || f.rentalStart) || f.purchaseDate) || 'Needs date']);
     R.lines(rows);

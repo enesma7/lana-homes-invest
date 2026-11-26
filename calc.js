@@ -169,7 +169,7 @@
   }
   /** Owner-typed values may still override source inputs (price, loan, sale, credits, value, rent run-rate). Cost totals and cash invested always come from line items. */
   function applyOverrides(g) {
-    var o = parseOverrides(g), k, keys = ['purchasePrice', 'loanAmount', 'salePrice', 'rehabBudget', 'adjustments', 'purchaseCredits', 'currentValue', 'loanBalance', 'monthlyIncome', 'monthlyExpenses'];
+    var o = parseOverrides(g), k, keys = ['purchasePrice', 'loanAmount', 'salePrice', 'rehabBudget', 'adjustments', 'purchaseCredits', 'currentValue', 'loanBalance', 'monthlyIncome', 'monthlyExpenses', 'monthlyPayment', 'closingInterest', 'interestRate'];
     for (var i = 0; i < keys.length; i++) {
       k = keys[i];
       if (o.hasOwnProperty(k) && o[k] !== '' && o[k] != null) g[k] = ledgerR2(ledgerNum(o[k]));
@@ -267,6 +267,45 @@
       profit: x ? x.profit : undefined
     };
   }
+
+  function hasLoan(f) { return n(f && f.loanAmount) > 0 || n(f && f.loanBalance) > 0; }
+  function loanPayModeOf(f) {
+    var m = String((f && f.loanPayMode) || '').trim().toLowerCase();
+    if (m === 'monthly') return 'monthly';
+    if (m === 'closing' || m === 'at closing' || m === 'atclosing') return 'closing';
+    return '';
+  }
+  function estimatedLoanLabelOf(f) { return loanPayModeOf(f) === 'closing' ? 'Loan Interest' : 'Est. Loan Payments'; }
+  function atSaleLoanInterestRecorded(f) {
+    var L = f && f.ledger, t = 0;
+    if (!L || !L.atSale) return 0;
+    L.atSale.forEach(function (a) {
+      var text = String((a && a.payee) || '') + ' ' + String((a && a.category) || '') + ' ' + String((a && a.notes) || '');
+      if (/interest|loan interest/i.test(text)) t += n(a && a.amount);
+    });
+    return r2(t);
+  }
+  /** Estimated loan cost for an unsold flip: monthly payments to the estimated sell date, or interest paid at closing. */
+  function estimatedLoanCostOf(f, today) {
+    if (!f || f.status === 'Sold' || !hasLoan(f)) return 0;
+    var mode = loanPayModeOf(f);
+    if (!mode) return 0;
+    if (atSaleLoanInterestRecorded(f) > 0) return 0;
+    if (mode === 'closing') {
+      var flat = n(f.closingInterest);
+      if (flat > 0) return r2(flat);
+    }
+    var start = (f.purchaseDate) || today || '';
+    var end = String(f.estimatedSaleDate || '').slice(0, 10);
+    var days = (/^\d{4}-\d{2}-\d{2}$/.test(end) && start) ? daysBetween(start, end) : 0;
+    if (days < 0) days = 0;
+    if (mode === 'monthly') {
+      var pmt = n(f.monthlyPayment);
+      return pmt > 0 && days ? r2(pmt * days * 12 / 365) : 0;
+    }
+    var loan = n(f.loanAmount) || n(f.loanBalance), rate = n(f.interestRate);
+    return loan > 0 && rate > 0 && days ? r2(loan * (rate / 100) * days / 365) : 0;
+  }
   /** Purchase To Payout, built from the live numbers (never stored). */
   function payoutOf(f, x) {
     var L = f.ledger, inv = x.investors, sold = f.status === 'Sold';
@@ -296,7 +335,9 @@
     order.forEach(function (p) { saleRows.push([lab[p], -r2(groups[p])]); });
     if (creditShown) saleRows.push([f.adjustmentsLabel || 'Credits', creditShown]);
     if (afterOpen) saleRows.push([f.otherCostsLabel || 'Costs After Closing', -afterOpen, 'After-sale costs not paid through the sale escrow']);
-    var net = r2(sale - loan - L.atSaleTotal + adj - afterOpen - exclude), toPartners = r2(capTotal + x.profit), diff = r2(toPartners - net);
+    var estLoan = r2(n(x.estLoanPayments));
+    if (estLoan) saleRows.push([x.estLoanLabel || estimatedLoanLabelOf(f), -estLoan]);
+    var net = r2(sale - loan - L.atSaleTotal + adj - afterOpen - exclude - estLoan), toPartners = r2(capTotal + x.profit), diff = r2(toPartners - net);
     var shownPc = r2(pc || exclude);
     var saleNote = shownPc ? ('Purchase Credits ' + fmt(shownPc) + ', already counted in cash in (not deducted)') : '';
     // Only add a reconciling sale line when the amount is a real, identifiable figure (unfunded cash to close).
@@ -337,7 +378,8 @@
   /** A saved flip's numbers → totals, ROI, hold, investor distributions. Pass a flip through live() first when it has a ledger. */
   function flip(f, today) {
     if (f && f.ledger && !f._liveApplied) { f = ledgerLive(f); f._liveApplied = true; }
-    var totalCost = n(f.purchasePrice) + n(f.buyClosingCosts) + n(f.rehabSpent) + n(f.holdingCosts) + n(f.sellingCosts) + n(f.otherCosts) - n(f.adjustments) - n(f.purchaseCredits);
+    var estLoan = estimatedLoanCostOf(f, today);
+    var totalCost = n(f.purchasePrice) + n(f.buyClosingCosts) + n(f.rehabSpent) + n(f.holdingCosts) + n(f.sellingCosts) + n(f.otherCosts) + estLoan - n(f.adjustments) - n(f.purchaseCredits);
     var profit = n(f.salePrice) - totalCost;
     var cash = n(f.cashInvested);
     var roiCash = cash > 0 ? profit / cash : null;
@@ -357,7 +399,8 @@
     });
     var out = { totalCost: r2(totalCost), profit: r2(profit), roiCash: roiCash, roiCost: roiCost, daysHeld: days,
       needsSaleDate: sold && !f.saleDate, needsPurchaseDate: !f.purchaseDate, simpleAnnual: ann.simple, compoundAnnual: ann.compound,
-      investors: inv, payout: null, rehabVariance: r2(n(f.rehabSpent) - n(f.rehabBudget)), live: !!f._live };
+      investors: inv, payout: null, rehabVariance: r2(n(f.rehabSpent) - n(f.rehabBudget)), live: !!f._live,
+      estLoanPayments: r2(estLoan), estLoanLabel: estimatedLoanLabelOf(f), loanPayMode: loanPayModeOf(f) };
     if (f._live && f.ledger && inv.length) out.payout = payoutOf(f, out);
     else if (meta && meta.payout && meta.payout.sale) out.payout = meta.payout;
     Object.defineProperty(out, 'f', { value: f, enumerable: false });
@@ -369,7 +412,7 @@
     if (h && h.ledger && !h._liveApplied) { h = ledgerLive(h); h._liveApplied = true; }
     var value = n(h.currentValue), bal = n(h.loanBalance), cash = n(h.cashInvested);
     var allIn = n(h.purchasePrice) + n(h.buyClosingCosts) + n(h.rehabSpent) + (h.ledger ? n(h.holdingCosts) + n(h.sellingCosts) + n(h.otherCosts) : 0);
-    var inc = monthlyRentOf(h), exp = n(h.monthlyExpenses), cf = inc - exp;
+    var inc = monthlyRentOf(h), exp = n(h.monthlyExpenses), pmt = hasLoan(h) ? n(h.monthlyPayment) : 0, ops = inc - exp, cf = ops - pmt;
     var hasIncome = exp > 0; // cash flow is only known once expenses are entered (rent alone is not cash flow)
     var equity = value - bal;
     var end = h.status === 'Sold' && h.saleDate ? h.saleDate : (today || new Date().toISOString().slice(0, 10));
@@ -385,11 +428,11 @@
       return { name: u.name, rent: r2(u.rent), rentalStart: u.rentalStart || '', deposit: u.deposit, monthsRented: ms, rentToDate: r2(n(u.rent) * ms) };
     });
     var rentToDate = unitRows.length ? r2(unitRows.reduce(function (s, u) { return s + u.rentToDate; }, 0)) : (monthsRented == null || !inc ? 0 : inc * monthsRented);
-    var cfToDate = monthsRented == null || !hasIncome ? 0 : rentToDate - exp * monthsRented;
-    return { rent: r2(inc), expenses: r2(exp), value: r2(value), loanBalance: r2(bal), cashInvested: r2(cash), allIn: r2(allIn), equity: r2(equity), hasIncome: hasIncome,
+    var cfToDate = monthsRented == null || !hasIncome ? 0 : rentToDate - (exp + pmt) * monthsRented;
+    return { rent: r2(inc), expenses: r2(exp), monthlyPayment: r2(pmt), value: r2(value), loanBalance: r2(bal), cashInvested: r2(cash), allIn: r2(allIn), equity: r2(equity), hasIncome: hasIncome,
       monthlyCashFlow: r2(cf), annualCashFlow: r2(cf * 12), cashOnCash: cash > 0 && hasIncome ? cf * 12 / cash : null,
       equityRoi: cash > 0 && value > 0 ? (equity - cash) / cash : null,
-      totalRoi: cash > 0 && value > 0 ? (equity - cash + (hasIncome ? cf * 12 : 0)) / cash : null, noi: r2(hasIncome ? cf * 12 : 0), cashFlowToDate: r2(cfToDate), rentToDate: r2(rentToDate), monthsHeld: months, daysHeld: days, monthsRented: monthsRented, daysRented: daysRented, rentalStart: rentStart || '', units: unitRows, deposits: depositsOf(h) };
+      totalRoi: cash > 0 && value > 0 ? (equity - cash + (hasIncome ? cf * 12 : 0)) / cash : null, noi: r2(hasIncome ? ops * 12 : 0), cashFlowToDate: r2(cfToDate), rentToDate: r2(rentToDate), monthsHeld: months, daysHeld: days, monthsRented: monthsRented, daysRented: daysRented, rentalStart: rentStart || '', units: unitRows, deposits: depositsOf(h) };
   }
 
   /**
@@ -780,6 +823,6 @@
     };
   }
 
-  var api = { splitsOf: splitsOf, ledgerSum: ledgerSum, payerMatches: ledgerPayerMatches, estimate: estimate, flip: flip, holding: holding, holdingTaxYears: holdingTaxYears, holdingClassOf: holdingClassOf, unitsOf: unitsOf, depositsOf: depositsOf, earliestStart: earliestStart, monthlyRentOf: monthlyRentOf, live: ledgerLive, ledger: ledger, ledgers: ledgers, phaseOf: ledgerPhase, atSaleOf: ledgerAtSale, payerOf: ledgerPayer, PHASES: LEDGER_PHASES, DEAL_PHASES: LEDGER_DEAL, daysBetween: daysBetween, monthsBetween: monthsBetween, annualize: annualize, n: n, downPayment: downPayment, cashToPurchase: cashToPurchase, afterSaleNotAtSale: afterSaleNotAtSale, purchaseCreditsOf: purchaseCreditsOf, saleClosingOf: saleClosingOf, SALE_CLOSING_LINES: SALE_CLOSING_LINES, numbersDisplayOf: numbersDisplayOf, purchaseClosingOf: purchaseClosingOf, PURCHASE_CLOSING_LINES: PURCHASE_CLOSING_LINES, parseOverrides: parseOverrides, applyOverrides: applyOverrides, normDate: normDate, fmtDate: fmtDate, purchaseDateOf: purchaseDateOf, applyFlipOverlay: applyFlipOverlay, shouldShowLoading: shouldShowLoading, expenseCatKey: expenseCatKey, expenseYearKey: expenseYearKey, expenseTotalsOf: expenseTotalsOf };
+  var api = { splitsOf: splitsOf, ledgerSum: ledgerSum, payerMatches: ledgerPayerMatches, estimate: estimate, flip: flip, holding: holding, holdingTaxYears: holdingTaxYears, holdingClassOf: holdingClassOf, unitsOf: unitsOf, depositsOf: depositsOf, earliestStart: earliestStart, monthlyRentOf: monthlyRentOf, live: ledgerLive, ledger: ledger, ledgers: ledgers, phaseOf: ledgerPhase, atSaleOf: ledgerAtSale, payerOf: ledgerPayer, PHASES: LEDGER_PHASES, DEAL_PHASES: LEDGER_DEAL, daysBetween: daysBetween, monthsBetween: monthsBetween, annualize: annualize, n: n, downPayment: downPayment, cashToPurchase: cashToPurchase, afterSaleNotAtSale: afterSaleNotAtSale, purchaseCreditsOf: purchaseCreditsOf, saleClosingOf: saleClosingOf, SALE_CLOSING_LINES: SALE_CLOSING_LINES, numbersDisplayOf: numbersDisplayOf, purchaseClosingOf: purchaseClosingOf, PURCHASE_CLOSING_LINES: PURCHASE_CLOSING_LINES, parseOverrides: parseOverrides, applyOverrides: applyOverrides, normDate: normDate, fmtDate: fmtDate, purchaseDateOf: purchaseDateOf, applyFlipOverlay: applyFlipOverlay, shouldShowLoading: shouldShowLoading, expenseCatKey: expenseCatKey, expenseYearKey: expenseYearKey, expenseTotalsOf: expenseTotalsOf, hasLoan: hasLoan, loanPayModeOf: loanPayModeOf, estimatedLoanCostOf: estimatedLoanCostOf, estimatedLoanLabelOf: estimatedLoanLabelOf, atSaleLoanInterestRecorded: atSaleLoanInterestRecorded };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.FlipCalc = api;
 })(this);
