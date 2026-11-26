@@ -1768,7 +1768,6 @@
       var key = b.getAttribute('data-key');
       if (key && click && TIPS && TIPS.edit) { hide(); tipEditor(key, b.getAttribute('data-def') || ''); return; }
       cur = b; tip.textContent = b.getAttribute('data-tip'); tip.hidden = false;
-      if (key && click && isOwner()) { var eb = document.createElement('button'); eb.type = 'button'; eb.className = 'tipedit'; eb.textContent = 'Edit'; eb.onclick = function (ev) { ev.stopPropagation(); hide(); tipEditor(key, b.getAttribute('data-def') || ''); }; tip.appendChild(eb); }
       var r = b.getBoundingClientRect(), w = Math.min(280, window.innerWidth - 24); tip.style.maxWidth = w + 'px';
       var tw = tip.offsetWidth, th = tip.offsetHeight, left = Math.max(12, Math.min(r.left + r.width / 2 - tw / 2, window.innerWidth - tw - 12));
       var top = r.bottom + 8; if (top + th > window.innerHeight - 8) top = r.top - th - 8;
@@ -1782,11 +1781,11 @@
         var f = TIPS && TIPS.f; if (f) openClosingItems(f, b.getAttribute('data-close'));
         return;
       }
-      if (b) { e.preventDefault(); e.stopPropagation(); if (cur === b && !tip.querySelector('.tipedit') && isOwner() && b.getAttribute('data-key')) show(b, true); else if (cur !== b) show(b, true); return; }
+      if (b) { e.preventDefault(); e.stopPropagation(); if (cur === b) hide(); else show(b, true); return; }
       if (!tip.contains(e.target)) hide();
     }, true);
     document.addEventListener('mouseover', function (e) { var b = e.target.closest && e.target.closest('.info'); if (b && matchMedia('(hover:hover)').matches) show(b); });
-    document.addEventListener('mouseout', function (e) { var b = e.target.closest && e.target.closest('.info'); if (!b || !matchMedia('(hover:hover)').matches) return; if (tip.querySelector('.tipedit')) return; hide(); });
+    document.addEventListener('mouseout', function (e) { var b = e.target.closest && e.target.closest('.info'); if (!b || !matchMedia('(hover:hover)').matches) return; hide(); });
     tip.addEventListener('mouseleave', function () { if (matchMedia('(hover:hover)').matches) hide(); });
     document.addEventListener('keydown', function (e) {
       if (e.key !== 'Escape' || tip.hidden) return;
