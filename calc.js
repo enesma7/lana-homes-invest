@@ -240,6 +240,25 @@
     return g;
   }
   /* LEDGER-END */
+  /**
+   * Display-only: sale-side adjustment amount to net into the Loan Payoff line
+   * when the adjustment is a seller-carry payoff reduction. The full loan and
+   * full adjustment stay in the math; Net Proceeds and payouts do not change.
+   *
+   * Opt in with adjustmentsKind = sellerCarryPayoff | sellerCarry | loanPayoff.
+   * Reis (f_reis) is also identified by its short label "Seller-Carry Payoff".
+   * Longer labels such as Fauna's "Seller-Carry Payoff $12,827.25 Under Loan
+   * (Owed Taxes)" are not treated as flagged, so their credit line stays put.
+   */
+  function sellerCarryPayoffReductionOf(f, creditShown) {
+    creditShown = r2(creditShown);
+    if (!creditShown) return 0;
+    var kind = String((f && f.adjustmentsKind) || '').toLowerCase().replace(/[\s_-]/g, '');
+    var flagged = kind === 'sellercarrypayoff' || kind === 'sellercarry' || kind === 'loanpayoff';
+    var lab = String((f && f.adjustmentsLabel) || '').trim();
+    var identified = flagged || (f && f.id === 'f_reis') || /^seller[- ]carry payoff$/i.test(lab);
+    return identified ? creditShown : 0;
+  }
   /** Purchase To Payout, built from the live numbers (never stored). */
   function payoutOf(f, x) {
     var L = f.ledger, inv = x.investors, sold = f.status === 'Sold';
@@ -254,12 +273,6 @@
       return [i.name, i.capital, i.purchaseCash && i.expensesPaid ? 'Purchase ' + fmt(i.purchaseCash) + ' + expenses ' + fmt(i.expensesPaid) : ''];
     });
     var capTotal = r2(inv.reduce(function (t, i) { return t + i.capital; }, 0));
-    var saleRows = [[sold ? 'Sale Price' : 'Sale Price (Projected)', sale]];
-    if (loan) saleRows.push(['Loan Payoff' + lender, -loan]);
-    var groups = {}, order = [];
-    L.atSale.forEach(function (a) { if (!groups[a.phase]) { groups[a.phase] = 0; order.push(a.phase); } groups[a.phase] += a.amount; });
-    var lab = { 'Buying': 'Buying Costs Paid At Sale', 'Rehab': 'Rehab Paid From Escrow', 'Holding': 'Holding Costs Paid At Sale', 'Selling': 'Selling Costs Through Escrow', 'After Sale': 'Held Back After Sale' };
-    order.forEach(function (p) { saleRows.push([lab[p], -r2(groups[p])]); });
     var afterOpen = afterSaleNotAtSale(L);
     var pc = r2(n(f.purchaseCredits));
     // If the structured field is set, those credits were moved out of adjustments and are already not in `adj`.
@@ -267,6 +280,16 @@
     var exclude = pc ? 0 : purchaseCreditsOf(f, L);
     // Display only the sale-side credit in the summing column (adj minus any inferred purchase credit still inside it).
     var creditShown = r2(adj - exclude);
+    // Display-only: net a flagged seller-carry payoff reduction into Loan Payoff and drop that credit line.
+    var carryRed = sellerCarryPayoffReductionOf(f, creditShown);
+    var loanShown = carryRed ? r2(loan - carryRed) : loan;
+    if (carryRed) creditShown = r2(creditShown - carryRed);
+    var saleRows = [[sold ? 'Sale Price' : 'Sale Price (Projected)', sale]];
+    if (loan || loanShown) saleRows.push(['Loan Payoff' + lender, -loanShown]);
+    var groups = {}, order = [];
+    L.atSale.forEach(function (a) { if (!groups[a.phase]) { groups[a.phase] = 0; order.push(a.phase); } groups[a.phase] += a.amount; });
+    var lab = { 'Buying': 'Buying Costs Paid At Sale', 'Rehab': 'Rehab Paid From Escrow', 'Holding': 'Holding Costs Paid At Sale', 'Selling': 'Selling Costs Through Escrow', 'After Sale': 'Held Back After Sale' };
+    order.forEach(function (p) { saleRows.push([lab[p], -r2(groups[p])]); });
     if (creditShown) saleRows.push([f.adjustmentsLabel || 'Credits', creditShown]);
     if (afterOpen) saleRows.push([f.otherCostsLabel || 'Costs After Closing', -afterOpen, 'After-sale costs not paid through the sale escrow']);
     var net = r2(sale - loan - L.atSaleTotal + adj - afterOpen - exclude), toPartners = r2(capTotal + x.profit), diff = r2(toPartners - net);
@@ -543,6 +566,6 @@
     };
   }
 
-  var api = { splitsOf: splitsOf, ledgerSum: ledgerSum, payerMatches: ledgerPayerMatches, estimate: estimate, flip: flip, holding: holding, holdingTaxYears: holdingTaxYears, holdingClassOf: holdingClassOf, unitsOf: unitsOf, depositsOf: depositsOf, earliestStart: earliestStart, monthlyRentOf: monthlyRentOf, live: ledgerLive, ledger: ledger, ledgers: ledgers, phaseOf: ledgerPhase, atSaleOf: ledgerAtSale, payerOf: ledgerPayer, PHASES: LEDGER_PHASES, DEAL_PHASES: LEDGER_DEAL, daysBetween: daysBetween, monthsBetween: monthsBetween, annualize: annualize, n: n, downPayment: downPayment, cashToPurchase: cashToPurchase, afterSaleNotAtSale: afterSaleNotAtSale, purchaseCreditsOf: purchaseCreditsOf, parseOverrides: parseOverrides, applyOverrides: applyOverrides };
+  var api = { splitsOf: splitsOf, ledgerSum: ledgerSum, payerMatches: ledgerPayerMatches, estimate: estimate, flip: flip, holding: holding, holdingTaxYears: holdingTaxYears, holdingClassOf: holdingClassOf, unitsOf: unitsOf, depositsOf: depositsOf, earliestStart: earliestStart, monthlyRentOf: monthlyRentOf, live: ledgerLive, ledger: ledger, ledgers: ledgers, phaseOf: ledgerPhase, atSaleOf: ledgerAtSale, payerOf: ledgerPayer, PHASES: LEDGER_PHASES, DEAL_PHASES: LEDGER_DEAL, daysBetween: daysBetween, monthsBetween: monthsBetween, annualize: annualize, n: n, downPayment: downPayment, cashToPurchase: cashToPurchase, afterSaleNotAtSale: afterSaleNotAtSale, purchaseCreditsOf: purchaseCreditsOf, sellerCarryPayoffReductionOf: sellerCarryPayoffReductionOf, parseOverrides: parseOverrides, applyOverrides: applyOverrides };
   if (typeof module !== 'undefined' && module.exports) module.exports = api; else root.FlipCalc = api;
 })(this);
